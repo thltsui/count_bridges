@@ -1,95 +1,132 @@
 """
-Regime B Bridge: Skellam per cell + Moran resampling between cells.
+Regime B: Pure iterative denoising for grid-count Moran model.
 
-Uses the Count Bridge Skellam machinery for per-cell birth-death (exact
-conditionals), then applies Moran resampling to couple cells spatially.
+No Skellam bridge steps. No Lie-Trotter splitting. The forward and
+reverse are both based on the Moran CTMC directly:
 
-Training forward:
-  1. Skellam bridge per cell: sample c_t given (c_0, c_1, t)
-  2. Moran resampling: cell i copies cell j's count with rate ~ K(i,j)
+Forward (training):
+  Simulate Moran CTMC from c_0 to time t via tau-leaping:
+    - Poisson birth-death per cell (mutation)
+    - Cell i copies cell j's count (resampling)
+  Both interleaved at each substep.
 
-Reverse step:
-  1. Model predicts c_0_hat from (c_t, t)
-  2. Skellam bridge step per cell: sample c_{t-dt} from exact conditional
-  3. Moran resampling: couple cells spatially
+Reverse (generation):
+  Start from de Finetti prior or source distribution.
+  At each step:
+    1. Model predicts c_0_hat from (c_t, t)
+    2. Re-noise c_0_hat to t_{k-1} via the Moran forward
+    3. At t=0, output c_0_hat directly
 
-The Lie-Trotter splitting (bridge step then resampling) is first-order
-accurate and preserves the exact integer dynamics of Count Bridges.
+Same approach as Regime A — just different state space and mutation type.
 """
 
 import numpy as np
 import torch
-from typing import Callable
-from bridges.numpy.skellam import SkellamBridge
 from bridges.numpy.utils import dlpack_backend
+from bridges.numpy.scheduling import make_weight_schedule
 from .forward import GridMoranForward
 
 
-class GridMoranBridge:
+class GridMoranIterative:
     """
-    Regime B bridge: Skellam per cell + Moran resampling.
-
-    Wraps a SkellamBridge for per-cell dynamics and adds inter-cell
-    Moran resampling as a separate layer.
+    Regime B with pure iterative denoising — no bridge kernels.
 
     Parameters:
-        skellam: SkellamBridge instance (handles per-cell birth-death)
-        grid_forward: GridMoranForward instance (handles resampling)
-        kappa: resampling rate (0 = pure Count Bridge)
+        grid_forward: GridMoranForward instance
+        n_steps: number of reverse denoising steps
+        lambda_rate: Poisson birth-death rate
+        n_substeps: tau-leaping substeps per unit time
     """
 
     def __init__(
         self,
-        skellam: SkellamBridge,
         grid_forward: GridMoranForward,
-        kappa: float = 2.0,
+        n_steps: int = 20,
+        lambda_rate: float = 2.0,
+        n_substeps: int = 20,
+        backend: str = "torch",
     ):
-        self.skellam = skellam
         self.grid = grid_forward
-        self.kappa = kappa
-        # Expose interface attributes from skellam
-        self.n_steps = skellam.n_steps
-        self.time_points = skellam.time_points
-        self.weights = skellam.weights
-        self.delta = skellam.delta
-        self.backend = skellam.backend
-        self.slack_sampler = skellam.slack_sampler
+        self.n_steps = n_steps
+        self.lambda_rate = lambda_rate
+        self.n_substeps = n_substeps
+        self.backend = backend
+        self.time_points = np.linspace(0, 1, n_steps + 1)
+
+    def _time_scale(self, t: float) -> float:
+        """Rate multiplier 1/(1-t)^2 for convergence to stationarity."""
+        return 1.0 / max(1.0 - t, 0.01) ** 2
+
+    def _simulate_forward(self, c_0: np.ndarray, t_target: float) -> np.ndarray:
+        """
+        Simulate Moran CTMC on count vectors from t=0 to t=t_target.
+
+        At each substep, interleaved:
+          1. Poisson birth-death per cell (mutation)
+          2. Moran resampling between cells (coupling)
+
+        c_0: [B, G] integer count vectors (B batch, G cells)
+        returns: [B, G] count vectors at time t_target
+        """
+        B, G = c_0.shape
+        c = c_0.copy()
+
+        total_steps = max(1, int(self.n_substeps * t_target))
+        dt = t_target / total_steps
+
+        for step in range(total_steps):
+            t_mid = (step + 0.5) * dt
+            rate_mult = self._time_scale(t_mid)
+
+            # --- Mutation: Poisson birth-death per cell ---
+            lam = self.lambda_rate * rate_mult * dt
+            births = np.random.poisson(lam, size=(B, G))
+            deaths = np.random.poisson(lam, size=(B, G))
+            c = np.maximum(c + births - deaths, 0).astype(np.int32)
+
+            # --- Resampling: cell i copies cell j's count ---
+            if self.grid.kappa > 0:
+                for b in range(B):
+                    c[b] = self.grid.resample_counts(
+                        c[b], rate=self.grid.kappa * rate_mult * dt
+                    )
+
+        return c
 
     def __call__(self, x_0, x_1, t_target=None):
         """
-        Training forward: Skellam bridge per cell, then Moran resampling.
+        Forward: simulate Moran CTMC from c_0 to produce c_t.
 
-        x_0: [B, G] target count vectors (one count per cell)
-        x_1: [B, G] source count vectors
-        returns: dict with x_t (noised counts) and target (clean counts)
+        x_0: [B, G] target count vectors
+        x_1: [B, G] source count vectors (ignored — Moran doesn't bridge)
+        returns: dict {"inputs": {"x_t", "t"}, "output": target}
         """
-        # Step 1: Skellam bridge per cell (exact conditional sampling)
-        out = self.skellam(x_0, x_1, t_target=t_target)
+        c_0 = dlpack_backend(x_0, backend='numpy', dtype="int32")
+        if isinstance(c_0, tuple):
+            c_0 = c_0[0]
+        B = c_0.shape[0]
 
-        if self.kappa <= 0:
-            return out
+        # Sample time
+        if t_target is not None:
+            k = np.full(B, int(round(t_target * self.n_steps)))
+        else:
+            k = np.random.randint(1, self.n_steps + 1, (B,))
 
-        # Step 2: Moran resampling on the noised count vector
-        x_t = dlpack_backend(out["inputs"]["x_t"], backend='numpy', dtype="float32")
-        t = dlpack_backend(out["inputs"]["t"], backend='numpy', dtype="float32")
-        t_mean = float(np.mean(t))
+        t = self.time_points[k].reshape(-1, 1)
 
-        # Apply resampling to each sample in the batch
-        x_t_int = x_t.round().astype(np.int32)
-        for b in range(x_t_int.shape[0]):
-            x_t_int[b] = self.grid.resample_counts(
-                x_t_int[b], rate=self.kappa * t_mean
-            )
+        # Simulate forward
+        t_max = float(np.max(t))
+        c_t = self._simulate_forward(c_0, t_max)
 
-        # Convert back
-        x_t_resampled = dlpack_backend(
-            x_t_int, backend=self.backend, dtype="float32"
+        target = c_0
+        c_t_out, t_out, target_out = dlpack_backend(
+            c_t, t, target, backend=self.backend, dtype="float32"
         )
-        if isinstance(x_t_resampled, tuple):
-            x_t_resampled = x_t_resampled[0]
-        out["inputs"]["x_t"] = x_t_resampled
 
-        return out
+        return {
+            "inputs": {"x_t": c_t_out, "t": t_out},
+            "output": target_out,
+        }
 
     def sampler(
         self,
@@ -98,72 +135,53 @@ class GridMoranBridge:
         model,
         return_trajectory: bool = False,
         return_x_hat: bool = False,
-        return_M: bool = False,
         **kwargs,
     ):
         """
-        Reverse: Skellam bridge step per cell + Moran resampling.
+        Reverse: pure iterative denoising.
 
-        At each reverse step k:
+        Start from source distribution (x_1), then:
           1. Model predicts c_0_hat from (c_t, t)
-          2. Skellam bridge step: exact per-cell reverse (Binomial + Hypergeometric)
-          3. Moran resampling: couple cells spatially
-
-        This is Lie-Trotter splitting: the exact bridge handles mutation,
-        the resampling handles coupling.
+          2. Re-noise c_0_hat to t_{k-1} via Moran forward
+          3. At t=0, output c_0_hat directly
         """
-        B, G = x_1.shape
-        x_t = dlpack_backend(x_1.round(), backend='numpy', dtype="int32")
+        c_t = dlpack_backend(x_1, backend='numpy', dtype="int32")
+        if isinstance(c_t, tuple):
+            c_t = c_t[0]
+        c_t = c_t.round().astype(np.int32)
+        B = c_t.shape[0]
 
-        traj, xhat_traj = [x_t.copy()], []
+        traj, xhat_traj = [c_t.copy()], []
 
-        for k in range(self.skellam.n_steps, 0, -1):
-            t = np.broadcast_to(self.skellam.time_points[k], (B, 1))
+        for k in range(self.n_steps, 0, -1):
+            t_curr = self.time_points[k]
+            t_next = self.time_points[k - 1]
+            t = np.broadcast_to(t_curr, (B, 1))
 
-            # Model prediction
-            x_t_dl, t_dl = dlpack_backend(
-                x_t, t, backend=self.backend, dtype="float32"
+            # Model predicts c_0
+            c_t_dl, t_dl = dlpack_backend(
+                c_t, t, backend=self.backend, dtype="float32"
             )
-            model_out = model.sample(x_t=x_t_dl, t=t_dl, **z)
-            x0_hat = dlpack_backend(model_out, backend='numpy', dtype="float32")
-            x0_hat = np.maximum(x0_hat.round().astype(np.int32), 0)
+            model_out = model.sample(x_t=c_t_dl, t=t_dl, **z)
+            c0_hat = dlpack_backend(model_out, backend='numpy', dtype="float32")
+            if isinstance(c0_hat, tuple):
+                c0_hat = c0_hat[0]
+            c0_hat = np.maximum(c0_hat.round().astype(np.int32), 0)
 
-            # Step 1: Skellam bridge step per cell (exact reverse)
-            diff = x_t - x0_hat
-            M_t = self.slack_sampler(diff)
-            N_t = np.abs(diff) + 2 * M_t
-            B_t = (N_t + diff) // 2
-
-            rho = self.weights[k - 1] / self.weights[k] if self.weights[k] > 0 else 0
-            non_zero = N_t > 0
-            N_s = np.zeros_like(N_t)
-            N_s[non_zero] = np.random.binomial(N_t[non_zero], rho)
-
-            non_zero_s = N_s > 0
-            B_s = np.zeros_like(B_t)
-            B_s[non_zero_s] = np.random.hypergeometric(
-                ngood=B_t[non_zero_s],
-                nbad=N_t[non_zero_s] - B_t[non_zero_s],
-                nsample=N_s[non_zero_s],
-            )
-            x_s = x_t - 2 * (B_t - B_s) + (N_t - N_s)
-
-            # Step 2: Moran resampling (spatial coupling)
-            if self.kappa > 0:
-                t_next = self.skellam.time_points[k - 1]
-                for b in range(B):
-                    x_s[b] = self.grid.resample_counts(
-                        x_s[b], rate=self.kappa * t_next
-                    )
-
-            x_t = x_s
+            # Re-noise via Moran forward to t_next
+            if t_next > 1e-6:
+                c_t = self._simulate_forward(
+                    c0_hat.reshape(B, -1), t_next
+                )
+            else:
+                c_t = c0_hat
 
             if return_trajectory:
-                traj.append(x_t.copy())
+                traj.append(c_t.copy())
             if return_x_hat:
-                xhat_traj.append(x0_hat.copy())
+                xhat_traj.append(c0_hat.copy())
 
-        outs = [x_t]
+        outs = [c_t]
         if return_trajectory:
             outs.append(np.stack(traj))
         if return_x_hat:

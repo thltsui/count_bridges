@@ -26,12 +26,10 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from datasets.discrete_moons import DiscreteMoonsDataset
-from bridges.numpy.skellam import SkellamBridge
-from bridges.numpy.slack_samplers import BesselM
 from bridges.numpy.utils import dlpack_backend
 
 from .forward import GridMoranForward
-from .bridge import GridMoranBridge
+from .bridge import GridMoranIterative
 
 
 # ---------------------------------------------------------------------------
@@ -184,22 +182,16 @@ def train(
         point_dataset, grid_size, n_points_per_hist, n_hists
     )
 
-    # Bridges
-    bessel = BesselM(lam_p=32.0, lam_m=32.0, markov=True)
-    skellam = SkellamBridge(
-        n_steps=20, slack_sampler=bessel,
-        schedule_type="linear", backend="torch", device=0,
-    )
-    grid_fwd = GridMoranForward(grid_size=grid_size, kappa=kappa, bandwidth=bandwidth)
-
-    # Two bridges to compare
+    # Two configurations: no resampling (kappa=0) vs Moran (kappa>0)
+    # Both use pure iterative denoising — no bridge kernels.
     bridges = {
-        "Skellam (kappa=0)": SkellamBridge(
-            n_steps=20, slack_sampler=bessel,
-            schedule_type="linear", backend="torch", device=0,
+        "Poisson only (kappa=0)": GridMoranIterative(
+            grid_forward=GridMoranForward(grid_size=grid_size, kappa=0, bandwidth=bandwidth),
+            n_steps=20, lambda_rate=2.0, n_substeps=20,
         ),
-        f"Moran (kappa={kappa})": GridMoranBridge(
-            skellam=skellam, grid_forward=grid_fwd, kappa=kappa,
+        f"Moran (kappa={kappa})": GridMoranIterative(
+            grid_forward=GridMoranForward(grid_size=grid_size, kappa=kappa, bandwidth=bandwidth),
+            n_steps=20, lambda_rate=2.0, n_substeps=20,
         ),
     }
 
@@ -260,7 +252,8 @@ def train(
                 gen_hists.append(np.maximum(result.reshape(grid_size, grid_size).round(), 0))
 
         # Evaluate
-        real_hists = [grid_fwd.counts_to_image(h[0].numpy())
+        gf = GridMoranForward(grid_size=grid_size, kappa=0, bandwidth=1)
+        real_hists = [gf.counts_to_image(h[0].numpy())
                       for h in [hist_data[i] for i in range(min(n_gen, len(hist_data)))]]
 
         gen_avg = np.mean(gen_hists, axis=0)
