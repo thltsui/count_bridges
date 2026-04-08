@@ -214,7 +214,7 @@ class MoranBridge:
         return result
 
     # ------------------------------------------------------------------
-    # Reverse sampler
+    # Reverse sampler: iterative denoising via Moran forward re-noising
     # ------------------------------------------------------------------
 
     def sampler(
@@ -230,18 +230,21 @@ class MoranBridge:
         value_range: int = 128,
     ):
         """
-        Reverse sampling from the Poisson-Dirichlet prior.
+        Reverse sampling: de Finetti prior -> iterative denoising -> data.
 
-        Instead of starting from x_1 (source distribution), we start from
-        the de Finetti equilibrium — the stationary distribution of the
-        Moran forward process.
+        No bridge kernels. At each step:
+          1. Model predicts x_0_hat from (x_t, t)
+          2. Re-noise x_0_hat to time t_{k-1} using the Moran forward
+             (tau-leaping with interleaved mutation + resampling)
+          3. Repeat until t = 0
 
-        Then iteratively denoise using the trained model, applying
-        Skellam-style bridge steps for the mutation component.
+        This is the correct reverse for the Moran CTMC — just time-reversal
+        via the learned denoiser, with the actual forward process for
+        re-noising. No Binomial/Hypergeometric bridge steps needed.
         """
         B, D = x_1.shape
 
-        # --- Sample from de Finetti prior instead of using x_1 ---
+        # --- Start from de Finetti prior ---
         x_t = self.sample_prior(B, D, value_range).astype(np.int32)
 
         if guidance_x_0 is not None:
@@ -250,45 +253,31 @@ class MoranBridge:
         traj, xhat_traj = [x_t.copy()], []
 
         for k in range(self.n_steps, 0, -1):
-            t = np.broadcast_to(self.time_points[k], (B, 1))
+            t_curr = self.time_points[k]
+            t_next = self.time_points[k - 1]
 
-            # Get model prediction of x_0
+            t = np.broadcast_to(t_curr, (B, 1))
+
+            # 1. Model predicts x_0
             x_t_dl, t_dl = dlpack_backend(
                 x_t, t, backend=self.backend, dtype="float32"
             )
             model_out = model.sample(x_t=x_t_dl, t=t_dl, **z)
             x0_hat = dlpack_backend(model_out, backend='numpy', dtype="float32")
-            x0_hat = x0_hat.round().astype(np.int32)
+            x0_hat = np.maximum(x0_hat.round().astype(np.int32), 0)
 
             if guidance_x_0 is not None:
                 gs = guidance_schedule[k] if guidance_schedule is not None else 0
-                x0_hat = (gs * guidance_x_0 + (1 - gs) * x0_hat).round().astype(np.int32)
+                x0_hat = np.maximum(
+                    (gs * guidance_x_0 + (1 - gs) * x0_hat).round().astype(np.int32), 0
+                )
 
-            # --- Reverse step: simulate backward Moran ---
-            # Use Skellam bridge step for the mutation component
-            diff = x_t - x0_hat
-            M_t = self.slack_sampler(diff)
-
-            N_t = np.abs(diff) + 2 * M_t
-            B_t = (N_t + diff) // 2
-
-            # Weight ratio for reverse step
-            rho = self.weights[k - 1] / self.weights[k] if self.weights[k] > 0 else 0
-
-            non_zero = N_t > 0
-            N_s = np.zeros_like(N_t)
-            N_s[non_zero] = np.random.binomial(N_t[non_zero], rho)
-
-            non_zero_s = N_s > 0
-            B_s = np.zeros_like(B_t)
-            B_s[non_zero_s] = np.random.hypergeometric(
-                ngood=B_t[non_zero_s],
-                nbad=N_t[non_zero_s] - B_t[non_zero_s],
-                nsample=N_s[non_zero_s]
-            )
-
-            x_s = x_t - 2 * (B_t - B_s) + (N_t - N_s)
-            x_t = x_s
+            # 2. Re-noise x0_hat to time t_next using Moran forward
+            if t_next > 1e-6:
+                x_t = self._simulate_forward(x0_hat, t_next)
+            else:
+                # At t=0, output the model's prediction directly
+                x_t = x0_hat
 
             if return_trajectory:
                 traj.append(x_t.copy())
