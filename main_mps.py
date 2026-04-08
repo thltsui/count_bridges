@@ -298,6 +298,8 @@ def main():
                         choices=["skellam", "moran", "cfm", "all"])
     parser.add_argument("--kappa", type=float, default=2.0)
     parser.add_argument("--bandwidth", type=float, default=5.0)
+    parser.add_argument("--theta", type=float, default=50.0,
+                        help="De Finetti concentration: theta = 2*gamma_mut/kappa")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -339,6 +341,8 @@ def main():
         bridges_to_run[f"Moran (kappa={args.kappa})"] = MoranBridge(
             n_steps=args.n_steps, slack_sampler=bessel,
             kappa=args.kappa, bandwidth=args.bandwidth,
+            theta=args.theta, grid_max=dataset.value_range - 1,
+            gamma_mut=1.0, n_substeps=20,
             schedule_type="linear", backend="torch", device=0,
         )
     if args.bridge in ("cfm", "all"):
