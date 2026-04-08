@@ -1,0 +1,15 @@
+# Moran Bridge Configuration
+# Extends Skellam bridge with spatial resampling from population genetics.
+# At kappa=0, reduces to the standard Skellam bridge.
+_target_: bridges.cupy.moran.MoranBridge
+
+# Skellam bridge parameters (inherited)
+schedule_type: "linear"
+homogeneous_time: false
+slack_sampler: ${slack_sampler}
+delta: false
+
+# Moran resampling parameters
+kappa: 2.0          # resampling rate (0 = no resampling = plain Skellam)
+bandwidth: 5.0      # RBF kernel bandwidth for spatial similarity
+resample_frac: 0.3  # max fraction of points resampled per step
