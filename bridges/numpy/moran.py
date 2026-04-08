@@ -117,10 +117,12 @@ class MoranBridge(SkellamBridge):
             x_t.round().astype(np.int32), t_mean
         )
 
-        # Convert back
+        # Convert back (dlpack_backend returns tuple; unwrap single element)
         x_t_resampled = dlpack_backend(
             x_t_resampled, backend=self.backend, dtype="float32", device=self.device
         )
+        if isinstance(x_t_resampled, tuple):
+            x_t_resampled = x_t_resampled[0]
         out_dict["inputs"]["x_t"] = x_t_resampled
 
         # Recompute target if needed
