@@ -200,9 +200,14 @@ def generate(model, bridge, dataset, n_samples, n_steps, device):
 
     # For Skellam/Moran: use numpy sampler
     x_1_np = x_1.cpu().numpy()
+    # Pass value_range for Moran's de Finetti prior
+    extra_kwargs = {}
+    if hasattr(bridge, 'sample_prior'):
+        extra_kwargs['value_range'] = dataset.dataset.value_range if hasattr(dataset, 'dataset') else 128
     result = bridge.sampler(
         x_1=x_1_np, z={}, model=model,
         return_trajectory=False, return_x_hat=False,
+        **extra_kwargs,
     )
     # Unwrap tuple from dlpack_backend
     if isinstance(result, tuple):
