@@ -1,0 +1,92 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Generative Reverse CTMC for the Moran Model:\\The Independent Pseudo-Marginal Approximation}
+\author{Antigravity AI}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+%% ==================================================================
+\section{Forward Continuous-Time Markov Chain (CTMC)}
+%% ==================================================================
+
+The forward particle system operates on a state space defined by $N$ particles moving on a discrete spatial grid. The joint state is $X = (x^{(1)}, \ldots, x^{(N)})$. The forward process incorporates two competing dynamics: spatial diffusion (mutation) and localized copying (resampling).
+
+The forward transition rate matrix $Q(t)$ drives the system. For a state $X$, the rate to transition to an adjacent state $Y$ is:
+
+\begin{enumerate}
+    \item \textbf{Mutation (Independent Random Walk):} A single particle $i$ takes a spatial step $dx \in \{(0,1), (0,-1), (1,0), (-1,0)\}$. The resulting state $Y$ has $y^{(i)} = x^{(i)} + dx$. The forward rate is:
+    \[
+        Q_{X \to Y}(t) = \gamma_{\text{mut}} \lambda(t)
+    \]
+    where $\lambda(t)$ is the time-scaling factor (e.g., $1/(1-t)$) ensuring convergence to the uniform stationary distribution as $t \to 1$.
+
+    \item \textbf{Resampling (Interacting Coping):} A particle $i$ spontaneously copies the spatial coordinate of another particle $j$. The resulting state $Y$ has $y^{(i)} = x^{(j)}$. The forward rate is driven by an RBF spatial kernel $K$:
+    \[
+        Q_{X \to Y}(t) = \frac{\kappa}{N} K(x^{(i)}, x^{(j)}) \lambda(t)
+    \]
+\end{enumerate}
+
+%% ==================================================================
+\section{The Reverse Generative CTMC}
+%% ==================================================================
+
+To use this process generatively, we must simulate the exact reverse-time CTMC operating from $t=1$ backward to $t=0$. According to Anderson's theorem (1982), the reverse-time transition rates from state $X$ to general state $Y$ are analytically given by:
+\[
+    R_{X \to Y}(t) = Q_{Y \to X}(t) \frac{p_t(Y)}{p_t(X)}
+\]
+where $p_t$ is the unconditional marginal probability of the joint distribution at time $t$. 
+
+In generative modeling, we condition on the ground truth target $X_0$. Given a neural network prediction $\hat{X}_0$, we compute the ratio using the conditional transition probabilities:
+\[
+    \frac{p_t(Y)}{p_t(X)} \approx \frac{P(X_t=Y \mid X_0=\hat{X}_0)}{P(X_t=X \mid X_0=\hat{X}_0)}
+\]
+
+\subsection{The Intractability Bottleneck}
+Because the Moran model explicitly contains resampling ($\kappa > 0$), the particles interact. For an interacting many-body system, the state transitions do not factorize, meaning $P(X_t \mid X_0)$ involves solving the Master Equation over $N$ strongly coupled particles. This is mathematically intractable. Consequently, the true generative reverse rates $R_{X \to Y}(t)$ cannot be exactly calculated.
+
+%% ==================================================================
+\section{Option A: The Independent Pseudo-Marginal Approximation}
+%% ==================================================================
+
+To bypass this intractability without destroying the interacting generative properties of the model, we employ an analytical approximation strictly during the evaluation of the conditional ratio.
+
+We assume $\kappa = 0$ \textit{only} for the definition of the marginal probabilities $P_{\text{indep}}$. This factors the $N$-particle joint probability into $N$ independent paths:
+\[
+    P_{\text{indep}}(X_t \mid \hat{X}_0) = \prod_{i=1}^N P_{\text{1D-CTMC}}(x_t^{(i)} \mid \hat{x}_0^{(i)})
+\]
+The single-particle probability mass function for a symmetric integer random walk is highly tractable, typically governed by modified Bessel functions of the first kind $I_v(z)$ (Skellam probabilities).
+
+By substituting $P_{\text{indep}}$ into the Anderson equation, we can derive the precise pseudo-rates used to tau-leap the generation backwards.
+
+\subsection{Reverse Mutation Rate}
+Particle $i$ moves backwards from coordinate $x$ to $x + dx$. The forward rate of arriving from $x+dx$ is $\gamma_{\text{mut}} \lambda(t)$. The reverse rate evaluates to:
+\[
+    R_{\text{mut}}(i) = \gamma_{\text{mut}} \lambda(t) \frac{P_{\text{indep}}(x+dx \mid \hat{x}_0^{(i)})}{P_{\text{indep}}(x \mid \hat{x}_0^{(i)})}
+\]
+Because the probability factorizes, all other $N-1$ particles completely mathematically cancel out in the fraction. Particle $i$ executes an independent gradient ascent towards its neural target.
+
+\subsection{Reverse Resampling Rate}
+This is the crux of the model. In reverse generation, a population clumped natively into a cell type cluster by the Dirichlet Process prior must dynamically separate into distinct cells to resolve the Two Moons distribution.
+
+Suppose particles $i$ and $j$ are currently co-located as clones: $x^{(i)} = x^{(j)}$. The forward rate of particle $i$ arriving at this cloned state from some arbitrary, distant coordinate $z$ was $\frac{\kappa}{N} K(z, x^{(j)}) \lambda(t)$. 
+
+The reverse rate at which particle $i$ breaks off from the cluster and leaps directly to $z$ is:
+\[
+    R_{\text{resample}}(i \to z) = \frac{\kappa}{N} K(z, x^{(j)}) \lambda(t) \times \frac{P_{\text{indep}}(z \mid \hat{x}_0^{(i)})}{P_{\text{indep}}(x^{(i)} \mid \hat{x}_0^{(i)})}
+\]
+
+This beautifully demonstrates that reverse interactions are \textbf{not neutered}. The particle splits from the clump and jumps to $z$ perfectly conditionally weighting:
+\begin{enumerate}
+    \item The raw mathematical necessity of $z$ being within spatial bounds of the cluster (enforced by the spatial kernel $K$ belonging exclusively to the $Q_{Y \to X}$ forward rate).
+    \item The directive mapping pulling the specific cell $i$ towards its targeted $\hat{x}_0^{(i)}$ feature space (enforced precisely by the independent ratio conditional).
+\end{enumerate}
+
+Thus, by approximating the conditional probabilities independently, we naturally harness localized spatial correlation whilst enabling tractable reverse-time generation.
+
+\end{document}

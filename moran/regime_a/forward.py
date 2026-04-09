@@ -62,7 +62,7 @@ class ParticleMoranForward:
 
     def _time_scale(self, t: float) -> float:
         """Rate multiplier: 1/(1-t)^2. Blows up at t->1 (stationarity)."""
-        return 1.0 / max(1.0 - t, 0.01) ** 2
+        return 1.0 / (max(1.0 - t, 0.001) ** 2)
 
     def _kernel(self, x: np.ndarray) -> np.ndarray:
         """Pairwise RBF kernel. x: [N, 2] -> [N, N]."""
