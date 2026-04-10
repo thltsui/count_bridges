@@ -107,4 +107,31 @@ Our Option A architecture explicitly executes this exact physical theorem:
 
 By injecting this ratio directly into the exact $Q_{Y \to X}(t)$ branching mechanisms, we dynamically bias the backward tau-leaping generation without destroying the native non-linear particle coupling. If strict simulation parameters validate this foundational theorem in subatomic physics, it theoretically justifies our exact mathematical construction for generative population mapping.
 
+%% ==================================================================
+\section{Algorithmic Enhancements for Generative Stability}
+%% ==================================================================
+
+To enforce structural rigidity and alleviate pathological boundary accumulation during generative inference, three critical mathematical extensions have been structurally bound to the reverse tau-leaping simulator.
+
+\subsection{Toroidal Boundary Topologies}
+Because standard random walk clipping bounds artificially lock particle states at grid edges (forming high-density sticky boundaries asymptotically as $t \to 1$), the DP prior noise structure breaks. To rectify this, the data coordinates are explicitly mapped to a modulo Torus:
+\begin{align}
+    X_{t} = (X_{t-\Delta t} + dX) \pmod{g_{max} + 1}
+\end{align}
+Respectively, spatial distance metrics governing pairwise resampling interactions and Skellam probabilities map directly to the absolute shortest cyclical gap bridging the Torus.
+
+\subsection{Pseudo Classifier-Free Guidance (Score Extrapolation)}
+To mitigate early-generation regression blurring where the un-guided neural network predicts fuzzy spatial interpolation natively minimizing MSE loss, an explicit temperature coefficient exponentially pushes jump rates into high-density spikes cleanly mapping discrete continuous-time Classifier-Free Extrapolations:
+\begin{align}
+    R_{mut} \propto \left(\frac{P_{\text{indep}}(X_{cand} \mid \hat{X}_0)}{P_{\text{indep}}(X_{current} \mid \hat{X}_0)}\right)^w
+\end{align}
+Using an extrapolated weight $w > 1$ strictly isolates prediction structures precisely mirroring the exact temperature scaling methodology found natively in unbounded generalized diffusion mechanics.
+
+\subsection{Interaction Decay (Moran Conditional Bridging)}
+A strictly localized spatial resampling kernel mathematically dictates particles recursively anchor towards clones. When structural predictions carry any latent regression noise nearby paths deviate wildly. To precisely clamp inference onto target analytical boundaries without destroying the entire interactive tree structure, the scaling parameter $\kappa$ linearly decays to absolute zero bounds at generation endpoints:
+\begin{align}
+    \kappa(t) = \kappa_{max} \cdot t
+\end{align}
+At $t \to 0$, $R_{jump} \to 0$ locking trajectory spans explicitly strictly mirroring the mathematically exact deterministic conditional Skellam bridge configurations organically!
+
 \end{document}
