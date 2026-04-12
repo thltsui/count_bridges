@@ -111,33 +111,22 @@ class MoranDenoiser(nn.Module):
         return out * self.g_max
 
     def sample(self, x_t, t):
-        """Average over m noise samples for generation."""
-        preds = torch.stack([self.forward(x_t, t) for _ in range(self.m_samples)])
-        return preds.mean(dim=0)
+        """Deterministic inference generation yielding absolute coordinates."""
+        return self.forward(x_t, t)
 
     def loss(self, target, x_t, t):
         """
-        Per-particle energy score, averaged over particles and batch.
-        Same loss as Count Bridges (energy score with m stochastic predictions).
+        Pure Set-to-Set Topological Distance constraint via symmetric Chamfer matching.
         """
-        B, N, D = x_t.shape
-        m = self.m_samples
-
-        preds = torch.stack([self.forward(x_t, t) for _ in range(m)], dim=2)  # [B, N, m, 2]
-        preds_flat = preds.reshape(B * N, m, D)
-        target_flat = target.reshape(B * N, D)
-
-        # Confinement: mean distance from each prediction to target
-        conf = (preds_flat - target_flat.unsqueeze(1)).norm(dim=-1).mean(dim=1)
-
-        # Interaction: mean pairwise distance between predictions
-        sq = preds_flat.pow(2).sum(-1)
-        inn = torch.bmm(preds_flat, preds_flat.transpose(1, 2))
-        sqd = (sq.unsqueeze(2) + sq.unsqueeze(1) - 2 * inn).clamp(min=1e-6).sqrt()
-        mask = 1.0 - torch.eye(m, device=preds_flat.device)
-        inter = (sqd * mask).sum(dim=(1, 2)) / (m * (m - 1))
-
-        return (conf - 0.5 * inter).mean()
+        preds = self.forward(x_t, t)  # [B, N, D]
+        
+        # --- Confinement: Permutation-Invariant Chamfer Distance ---
+        dist_matrix = (preds.unsqueeze(2) - target.unsqueeze(1)).norm(dim=-1) # [B, N, N]
+        min_prediction_to_target = dist_matrix.min(dim=2)[0] # [B, N]
+        min_target_to_prediction = dist_matrix.min(dim=1)[0] # [B, N]
+        
+        # Bounded deterministic evaluation
+        return (min_prediction_to_target.mean() + min_target_to_prediction.mean()) / 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +272,7 @@ def run_one(
                 t_tensor = torch.full((B,), t_val, device=device_obj)
 
                 x_0_hat = model.sample(x_t_tensor, t_tensor).cpu().numpy()
-                x_0_hat = np.clip(np.round(x_0_hat), 0, g_max).astype(np.int32)
+                x_0_hat = np.mod(np.round(x_0_hat), g_max + 1).astype(np.int32)
 
                 t_next = (k - 1) / n_denoise_steps
                 if t_next > 0.01:
