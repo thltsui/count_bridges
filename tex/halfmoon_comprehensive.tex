@@ -14,7 +14,16 @@
 \maketitle
 
 \section{Introduction and Topological Set Objectives}
-The traditional continuous-time Markov chain diffusion limits rely purely on independent pointwise dynamics. The generative Moran Bridge models a fully interacting array of $N$ particles over a discrete topological grid, establishing set-to-set transformations globally to minimize continuous density mismatch inherently utilizing Permutation-Invariant metrics.
+The foundational \textbf{Count Bridges} framework introduced computationally tractable continuous-time discrete diffusion paths bridging fixed integer topologies natively. For the standard visual Half-Moon evaluation, the continuous 2D plane is strictly quantized into the bounded discrete state space \(\mathcal{X} = \{0, \dots, 195\} \times \{0, \dots, 195\}\) by mapping the latent moons via \(y = \text{round}(x \cdot 30.0 + 80.0)\). 
+
+\subsection{Original Count Bridge Forward and Backward Processes}
+To diffuse point coordinates over this integer grid, the original framework constructs a purely independent, non-interacting random walk modeled by independent Poisson birth-death processes with cumulative intensities governed by \(\Lambda_{\pm}(t)\). 
+
+In the \textbf{Forward Process}, counts diffuse to an unconditional target. Because independent Poisson increments mathematically generate coordinate bounding variations, the transition kernel directly results in a symmetric \textbf{Skellam distribution} at \(t=1\), mapping coordinates to an unstructured stationary distribution.
+In the \textbf{Backward Process}, the reverse generative step inherently evaluates the unobserved "slack" metrics (e.g. forward transitions where a birth strictly cancels a death symmetrically) resolved elegantly using a \textbf{Bessel analytical slack posterior}. Using a trained continuous energy-score model to estimate the terminal \(\hat{X}_0\), the discrete inference path navigates utilizing an exact Binomial-Hypergeometric generative reverse kernel to sequentially jump coordinates backward over time toward the target moons distribution.
+
+\subsection{Generative Moran Extension}
+While the traditional continuous-time Markov chain diffusion limits described above rely purely on independent pointwise dynamics (often scaling independently ignoring spatial inter-data distributions), the proposed Generative Moran Bridge models a fully interacting array of \(N\) particles globally over the same discrete topological grid. This establishes dynamic Set-to-Set transformations globally minimizing continuous density mapping mismatch inherently utilizing Permutation-Invariant metrics.
 
 \section{Forward Noising Process (Moran Formulations)}
 Given an arbitrary data distribution represented by point coordinates $X_0 \in \mathbb{Z}^{N \times 2}$ bounded by a Toroidal grid $\mathcal{T} = G \times G$, the forward dynamics inject discrete entropy over $t \in [0, 1)$ via two concurrent processes: Mutation and Interaction.
