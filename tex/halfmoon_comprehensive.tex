@@ -23,7 +23,7 @@ To diffuse point coordinates over this integer grid, each training sample strict
 \]
 which acts directly as the baseline spatial mutation operator mapping the unconditional target bounds.
 
-In the \textbf{Forward Process}, counts diffuse to an unconditional target parameterized by cumulative intensities \(\Lambda_{\pm}(t) = \lambda_{\pm} w(t)\). Because independent Poisson increments drive coordinate transitions mathematically, the distribution of the net displacement \(k = X_t - X_0 = B_t - D_t\) (where births \(B_t \sim \text{Poisson}(\Lambda_+)\) and deaths \(D_t \sim \text{Poisson}(\Lambda_-)\) are strictly independent) follows exactly a \textbf{Skellam distribution} at \(t=1\):
+In the \textbf{Forward Process}, counts diffuse to an unconditional target driven by scalar rate parameters \(\lambda_{+}\) and \(\lambda_{-}\), which explicitly dictate the intensity (rate) of birth (+1) and death (-1) events respectively. The process is temporally parameterized by cumulative intensities \(\Lambda_{\pm}(t) = \lambda_{\pm} w(t)\), where \(w(t)\) represents a time-rescaling function. Because independent Poisson increments drive coordinate transitions mathematically, the distribution of the net displacement \(k = X_t - X_0 = B_t - D_t\) (where births \(B_t \sim \text{Poisson}(\Lambda_+)\) and deaths \(D_t \sim \text{Poisson}(\Lambda_-)\) are strictly independent) follows exactly a \textbf{Skellam distribution} at \(t=1\):
 \[
 S(k; \lambda_{+}, \lambda_{-}) = e^{-(\lambda_{+} + \lambda_{-})} \left(\frac{\lambda_{+}}{\lambda_{-}}\right)^{k/2} I_{|k|}(2\sqrt{\lambda_{+} \lambda_{-}})
 \]
