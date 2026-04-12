@@ -38,7 +38,20 @@ In the \textbf{Backward Process}, the reverse generative step inherently evaluat
 \[
 \pi_t(m \mid d_t) = \frac{1}{I_{|d_t|}(2 \sqrt{\Lambda_+(t) \Lambda_-(t)})} \frac{(\Lambda_+(t) \Lambda_-(t))^{m + |d_t|/2}}{m! (m + |d_t|)!}
 \]
-Using a trained continuous energy-score model to estimate the terminal source distribution \(\hat{X}_0\), the discrete inference path navigates utilizing an exact Binomial-Hypergeometric generative reverse kernel to sequentially jump coordinates backward conditionally over time toward the target moons distribution safely anchored by exact analytical Bayesian posterior paths.
+\subsubsection*{Mechanics of the Exact Generative Reverse Kernel}
+To generate samples conceptually, the model must reverse the discrete diffusion from an unstructured stationary state at \(t=1\) back to the target \(t=0\). This backward sampling explicitly evaluates the exact sequence of discrete coordinate jumps. Mathematically, this is executed conditionally via a three-step generative reverse kernel traversing an interval from \(t\) backward to \(s\) (where \(s < t\)):
+\begin{enumerate}
+    \item \textbf{Score Estimation:} A trained neural network observes the current noisy state \(X_t\) and predicts an estimate of the clean terminal source distribution \(\hat{X}_0\). This specifies the exact inferred forward displacement: \(d_t = X_t - \hat{X}_0\).
+    \item \textbf{Slack Resolution (Bessel Posterior):} Using the inferred displacement \(d_t\), the system samples the unobserved "slack" \(m \sim \pi_t(\cdot \mid d_t)\) using the analytical Bessel posterior formulation defined above. This completely reconstructs the absolute number of forward births \(B_t = m + \max(d_t, 0)\) and forward deaths \(D_t = m + \max(-d_t, 0)\) that effectively occurred between time \(0\) and \(t\).
+    \item \textbf{Binomial Backward Stepping:} With the absolute count of forward events \((B_t, D_t)\) unconditionally resolved given the neural estimate \(\hat{X}_0\), the process determines exactly how many of those events occurred within the concluding interval \([s, t]\) so they can be securely reversed. Because independent Poisson events distribute uniformly according to their integrated cumulative intensities \(\Lambda\), the discrete counts to "undo" resolve purely into exact analytic Binomial distributions:
+    \[
+    \Delta B_{t \to s} \sim \text{Binomial}\left(B_t, \frac{\Lambda_+(t) - \Lambda_+(s)}{\Lambda_+(t)}\right)
+    \]
+    \[
+    \Delta D_{t \to s} \sim \text{Binomial}\left(D_t, \frac{\Lambda_-(t) - \Lambda_-(s)}{\Lambda_-(t)}\right)
+    \]
+    The state coordinates are then safely leaped backward securely: \(X_s = X_t - \Delta B_{t \to s} + \Delta D_{t \to s}\), jumping conditionally over time securely anchored toward the fixed structural Moons distribution.
+\end{enumerate}
 
 \subsection{Generative Moran Extension}
 While the traditional continuous-time Markov chain diffusion limits described above rely purely on independent pointwise dynamics (often scaling independently ignoring spatial inter-data distributions), the proposed Generative Moran Bridge models a fully interacting array of \(N\) particles globally over the same discrete topological grid. This establishes dynamic Set-to-Set transformations globally minimizing continuous density mapping mismatch inherently utilizing Permutation-Invariant metrics.

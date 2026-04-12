@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 APR 2026 15:54
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 APR 2026 15:55
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -395,17 +395,20 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
 
 {/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
-<figures/extracted_comparison.png, id=72, 1060.9236pt x 384.11505pt>
+<figures/extracted_comparison.png, id=76, 1060.9236pt x 384.11505pt>
 File: figures/extracted_comparison.png Graphic file (type png)
 <use figures/extracted_comparison.png>
-Package pdftex.def Info: figures/extracted_comparison.png  used on input line 8
-4.
+Package pdftex.def Info: figures/extracted_comparison.png  used on input line 9
+7.
 (pdftex.def)             Requested size: 407.66833pt x 147.60048pt.
 
 
 LaTeX Warning: `!h' float specifier changed to `!ht'.
 
-[3 <./figures/extracted_comparison.png>] [4] (./halfmoon_comprehensive.aux)
+
+LaTeX Warning: `!h' float specifier changed to `!ht'.
+
+[3] [4 <./figures/extracted_comparison.png>] (./halfmoon_comprehensive.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
@@ -415,13 +418,13 @@ Package rerunfilecheck Info: File `halfmoon_comprehensive.out' has not changed.
 (rerunfilecheck)             Checksum: 88EDE1AA1E038B520F3A5D13B675E957;2514.
  ) 
 Here is how much of TeX's memory you used:
- 10216 strings out of 467525
- 154632 string characters out of 5418983
- 583698 words of memory out of 5000000
- 39000 multiletter control sequences out of 15000+600000
+ 10222 strings out of 467525
+ 154722 string characters out of 5418983
+ 584698 words of memory out of 5000000
+ 39002 multiletter control sequences out of 15000+600000
  635584 words of font info for 71 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,9n,79p,680b,457s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,9n,79p,680b,473s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb
 ></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb>
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><
@@ -437,10 +440,10 @@ e/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive
 /2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/local/texlive/2
 026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/202
 6/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on halfmoon_comprehensive.pdf (4 pages, 379266 bytes).
+Output written on halfmoon_comprehensive.pdf (4 pages, 382754 bytes).
 PDF statistics:
- 154 PDF objects out of 1000 (max. 8388607)
- 114 compressed objects within 2 object streams
- 18 named destinations out of 1000 (max. 500000)
+ 159 PDF objects out of 1000 (max. 8388607)
+ 119 compressed objects within 2 object streams
+ 22 named destinations out of 1000 (max. 500000)
  94 words of extra memory for PDF output out of 10000 (max. 10000000)
 
