@@ -56,27 +56,44 @@ To generate samples conceptually, the model must reverse the discrete diffusion 
 \subsection{Generative Moran Extension}
 While the traditional continuous-time Markov chain diffusion limits described above rely purely on independent pointwise dynamics (often scaling independently ignoring spatial inter-data distributions), the proposed Generative Moran Bridge models a fully interacting array of \(N\) particles globally over the same discrete topological grid. This establishes dynamic Set-to-Set transformations globally minimizing continuous density mapping mismatch inherently utilizing Permutation-Invariant metrics.
 
-\section{Forward Noising Process (Moran Formulations)}
-Given an arbitrary data distribution represented by point coordinates $X_0 \in \mathbb{Z}^{N \times 2}$ bounded by a Toroidal grid $\mathcal{T} = G \times G$, the forward dynamics inject discrete entropy over $t \in [0, 1)$ via two concurrent processes: Mutation and Interaction.
+\section{Forward Noising Process (Moran Formulation)}
+In stark contrast to Count Bridges where each particle diffuses fully independently (\(N=1\)), the Generative Moran Framework operates dynamically strictly on an interacting ensemble of particles \(X = (x_1, \dots, x_N)\). To eliminate artificial probability accumulations ("sticky boundaries") at the grid edges historically plaguing integer point processes, the framework restricts the domain topologically to a strictly discrete Torus \(\mathcal{T} = (\mathbb{Z}/G\mathbb{Z})^2\), utilizing modulo arithmetic \(x \pmod G\) universally. 
 
-\subsection{Mutation dynamics}
-Each individual particle diffuses over bounded nodes governed by scalar rate $\gamma$:
-\[
-A_{mut} f(x) = \gamma \sum_{i=1}^N \sum_{y \sim x_i} \frac{1}{|E|} \left[ f(x^{i \leftarrow y}) - f(x) \right]
-\]
-Because boundary conditions previously artificially constrained neural convergence via sticky boundaries, the generative framework maps shortest-path topology identically on a torus algebraically: $x_i = (x_i + \Delta) \pmod G$.
+The forward stochastic dynamics inject discrete entropy over \(t \in [0, 1)\) via an infinitesimal generator strictly partitioning continuous-time Markov transitions into two concurrent structural processes: \textbf{Mutation} and \textbf{Interaction}.
 
-\subsection{Resampling interaction}
-The interacting term enables local cloning modeled by interaction factor $\kappa$, weighted natively by Gaussian bandwidth metrics mapping coordinates:
+\subsection{Mutation Dynamics (Unconditional Exploration)}
+The mutation operator drives local, unguided exploration bounding individual diffusion. For a continuous test function \(f\), the mutation generator dictates that any particle \(x_i\) transitions strictly to one of its cardinal nearest neighbors \(y \in \mathcal{N}(x_i)\) uniformly:
 \[
-A_{res} f(x) = \frac{\kappa}{N} \sum_{i \ne j} K(x_i, x_j) \left[ f(x^{i \leftarrow j}) - f(x) \right]
+\mathcal{A}_{mut} f(X) = \gamma(t) \sum_{i=1}^N \sum_{y \in \mathcal{N}(x_i)} \frac{1}{|\mathcal{N}(x_i)|} \left[ f(X^{i \leftarrow y}) - f(X) \right]
 \]
-As $t \to 1$, the continuous parameters scale by $\frac{1}{(1-t)^2}$, driving the distribution structurally towards the de Finetti Dirichlet optimal baseline uniformly defined strictly parametrically by $\theta = 2\gamma/\kappa$.
+where \(X^{i \leftarrow y}\) denotes the configuration where particle \(i\) explicitly jumps to state \(y\), and \(\mathcal{N}(x_i)\) utilizes strictly the Toroidal boundaries mapping \((x_i + e) \pmod G\) for unit vectors \(e \in \{(\pm 1, 0), (0, \pm 1)\}\).
+
+\subsection{Resampling Interaction (Conditional Clustering)}
+The uniquely structural component of the Moran formulation is the resampling interaction, which securely enables non-local "cloning" mapping clustered spatial concentrations. Weighted dynamically by a local spatial interaction kernel \(K_\sigma\), particle \(x_i\) is stochastically replaced dynamically by the exact coordinate of another particle \(x_j\):
+\[
+\mathcal{A}_{res} f(X) = \frac{\kappa(t)}{N} \sum_{i=1}^N \sum_{j \ne i} K_\sigma(x_i, x_j) \left[ f(X^{i \leftarrow x_j}) - f(X) \right]
+\]
+To respect the continuous 2D plane wrapping fundamentally, the kernel \(K_\sigma\) maps strictly the shortest-path Toroidal distance:
+\[
+K_\sigma(x_i, x_j) \propto \exp\left( -\frac{\text{dist}_\mathcal{T}(x_i, x_j)^2}{2\sigma^2} \right)
+\]
+As \(t \to 1\), the continuous temporal parameters \(\gamma(t), \kappa(t) \propto \frac{1}{(1-t)^2}\) structurally drive the array distribution toward an overarching optimal stationary state structurally conforming to a de Finetti Dirichlet mixture, parametrically controlled precisely by the ratio \(\theta = 2\gamma / \kappa\).
 
 \section{Backward Generation Process}
-The unconstrained generative paths extract the exact adjoint parameters structurally utilizing Pseudo-Marginal Skellam inferences. The discrete reverse evaluation jumps coordinates locally matching standard score derivations.
+Unlike the purely unconditionally independent Pointwise Skellam transitions natively handled effectively by exact Bayesian posteriors resolving \(N=1\) transitions sequentially, the joint \(N\)-particle interaction structurally prohibits computationally tractable exact analytical marginalization. Consequently, regenerating the topological points explicitly relies on powerful pseudo-marginal analytical evaluation limits natively estimating exact categorical score functions mapping coordinate transitions backward in time.
 
-To systematically penalize local smearing optimally derived from stochastic sampling noise limits, the backward solver structurally anneals parameter limits $\kappa(t) = \kappa_{max} \cdot t$, inherently reducing late-stage generative smearing mechanically.
+\subsection{Pseudo-Marginal Reverse Score Evaluation}
+Traversing backward along continuous computational time, the backward transitions governing particle jumps functionally depend rigorously securely on evaluating the marginal probability ratios \(\hat{p}_t(X^{i \leftarrow y}) / \hat{p}_t(X)\). The generative Moran kernel empirically estimates these discrete bounding metrics natively evaluating the categorical distributions provided directly explicitly by a trained graph-based discrete denoiser model computing empirical transitions uniformly.
+
+\subsection{Tau-Leaping Discrete Inference Simulation}
+Because transitions unconditionally evaluate categorically resolving discrete coordinate bounds iteratively over \(\mathbb{Z}^2\), backward integration leverages explicitly a discrete \textbf{Tau-Leaping} formulation structurally stepping through bounds \(t \to s\). For a computationally bound small leap \(\Delta t\), the conditional discrete jump probabilities for a single particle \(i\) are generated natively via independent empirical Poisson increments identically resolving conditionally across all \(N\):
+\[
+P(x_i(t - \Delta t) = y \mid x_i(t)) \approx 1 - \exp\left( - R_{y \leftarrow x_i}(t) \Delta t \right)
+\]
+where \(R_{y \leftarrow x_i}(t)\) structurally scales the estimated pseudo-marginal reverse rates aggregating explicitly the empirical conditionally inferred continuous score vectors.
+
+\subsection{Interaction Decay constraints (\(\kappa\) Annealing)}
+During the latest stages of unconditional sampling as \(t \to 0\), unstructured cloning limits \(\mathcal{A}_{res}\) conditionally map empirically incorrect spatial concentrations inherently causing unguided "generative smearing" natively blurring fine topology bounds mathematically. To structurally enforce sharpness iteratively, the backward kernel securely anneals the continuous interaction limit linearly scaling \(\kappa(t) = \kappa_{max} \cdot t\). This fundamentally transitions the dynamics from globally interactive clustering conditionally back to mathematically constrained isolated spatial diffusion smoothly minimizing empirical structural error seamlessly limits mathematically uniformly mapping boundaries perfectly natively.
 
 \section{Training Objectives and Set Topology}
 A massive breakthrough occurred modifying the structural constraints binding the network. Standard Count Bridges define Energy Scores $E_s$ measuring strictly element-to-element mapping limits across predictions locally. Due to random resampling arrays actively scrambling the array indices mathematically inside the Moran path, massive $N$ scaling structurally collapses resulting in unbounded error surfaces mathematically generating randomized density bounding maps.
