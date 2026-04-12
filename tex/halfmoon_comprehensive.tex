@@ -17,11 +17,14 @@
 The foundational \textbf{Count Bridges} framework introduced computationally tractable continuous-time discrete diffusion paths bridging fixed integer topologies natively. For the standard visual Half-Moon evaluation, the continuous 2D plane is strictly quantized into the bounded discrete state space \(\mathcal{X} = \{0, \dots, 195\} \times \{0, \dots, 195\}\) by mapping the latent moons via \(y = \text{round}(x \cdot 30.0 + 80.0)\). 
 
 \subsection{Original Count Bridge Forward and Backward Processes}
-To diffuse point coordinates over this integer grid, each training sample strictly models a single independent particle (\(N=1\)) initialized on the two-moon distribution. This particle then executes a random walk governed by independent Poisson increments. Formally, independent Poisson birth-death processes are concurrently applied across both the \(X\) and \(Y\) Cartesian axes. It is critical to recognize that a continuous-time birth-death process scaling two independent coordinate axes is mathematically isomorphic to a 2D discrete random walk where jumps occur exclusively over the cardinal nearest neighbors on \(\mathbb{Z}^2\), governed by the designated spatial jump kernel:
+To diffuse point coordinates over this integer grid, each training sample strictly models a single independent particle (\(N=1\)) initialized on the two-moon distribution. This particle then executes a random walk governed by independent Poisson increments. Formally, independent Poisson birth-death processes are concurrently applied across both the \(X\) and \(Y\) Cartesian axes. It is critical to recognize that a continuous-time birth-death process scaling two independent coordinate axes is mathematically isomorphic to a 2D discrete random walk where jumps occur exclusively over the cardinal nearest neighbors on \(\mathbb{Z}^2\). Given that the jump rates out of any state sum to \(2(\lambda_{+} + \lambda_{-})\), the spatial jump kernel (the probability of moving in a specific direction given that a jump occurs) is explicitly governed by the continuous scalar limits:
 \[
-\mathcal{K}((x,y) \to (x\pm 1, y)) = \frac{1}{4}, \quad \mathcal{K}((x,y) \to (x, y\pm 1)) = \frac{1}{4}
+\mathcal{K}((x,y) \to (x + 1, y)) = \frac{\lambda_{+}}{2(\lambda_{+} + \lambda_{-})}, \quad \mathcal{K}((x,y) \to (x - 1, y)) = \frac{\lambda_{-}}{2(\lambda_{+} + \lambda_{-})}
 \]
-which acts directly as the baseline spatial mutation operator mapping the unconditional target bounds.
+\[
+\mathcal{K}((x,y) \to (x, y + 1)) = \frac{\lambda_{+}}{2(\lambda_{+} + \lambda_{-})}, \quad \mathcal{K}((x,y) \to (x, y - 1)) = \frac{\lambda_{-}}{2(\lambda_{+} + \lambda_{-})}
+\]
+which act collectively as the baseline spatial mutation operator directing the unconditioned structural topological targets.
 
 In the \textbf{Forward Process}, counts diffuse to an unconditional target driven by scalar rate parameters \(\lambda_{+}\) and \(\lambda_{-}\), which explicitly dictate the intensity (rate) of birth (+1) and death (-1) events respectively. The process is temporally parameterized by cumulative intensities \(\Lambda_{\pm}(t) = \lambda_{\pm} w(t)\), where \(w(t)\) represents a time-rescaling function. Because independent Poisson increments drive coordinate transitions mathematically, the distribution of the net displacement \(k = X_t - X_0 = B_t - D_t\) (where births \(B_t \sim \text{Poisson}(\Lambda_+)\) and deaths \(D_t \sim \text{Poisson}(\Lambda_-)\) are strictly independent) follows exactly a \textbf{Skellam distribution} at \(t=1\):
 \[
