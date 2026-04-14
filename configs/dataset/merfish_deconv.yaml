@@ -1,2 +1,3 @@
 _target_: datasets.merfish_deconv.MerfishDeconv
 data_dim: 649
+context_dim: 649

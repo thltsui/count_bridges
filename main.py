@@ -11,7 +11,6 @@ import logging
 from pathlib import Path
 import numpy as np
 import pickle
-import cupy as cp
 from torch.utils.data import random_split
 from typing import Optional
 
@@ -35,7 +34,6 @@ def setup_environment(cfg: DictConfig) -> str:
     # Set random seeds
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
-    cp.random.seed(cfg.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(cfg.seed)
     

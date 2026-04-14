@@ -12,9 +12,8 @@ def dlpack_backend(*args, backend: str = "torch", dtype: Optional = None, device
         args = (args,)
     if backend == "torch":
         dtype = torch.float32 if dtype == "float32" else dtype
-        # For numpy bridge, always use CPU (device=0 would incorrectly map to MPS on Apple Silicon)
-        torch_device = None  # CPU
-        return tuple(torch.from_numpy(a.copy()) if dtype is None else torch.from_numpy(a.copy()).to(dtype) for a in args)
+        # respect device
+        return tuple(torch.from_numpy(a.copy()).to(device=device, dtype=dtype) if dtype is not None else torch.from_numpy(a.copy()).to(device=device) for a in args)
     elif backend == "numpy":
         dtype = np.int32 if dtype == "int32" else dtype
         # if is torch, convert to numpy
