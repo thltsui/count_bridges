@@ -1,5 +1,7 @@
 """
-Regime A Forward Process: N particles hopping on a 2D integer grid.
+Moran CTMC Forward Process: N particles hopping on a 2D integer grid.
+
+Used for the Two-Moons benchmark (synthetic discrete distribution matching).
 
 State: {x^(1), ..., x^(N)} where x^(i) ∈ {0, ..., g_max}^2.
 The histogram c_{ij} = #{k : x^(k) = (i,j)} is DERIVED by counting.
@@ -24,7 +26,7 @@ import numpy as np
 
 class ParticleMoranForward:
     """
-    Forward process for Regime A: N particles on a 2D grid.
+    Moran CTMC forward process: N particles on a 2D integer grid.
 
     Parameters:
         g_max: max grid coordinate ({0, ..., g_max}^2)

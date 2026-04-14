@@ -31,8 +31,8 @@ import torch.nn as nn
 from scipy.stats import wasserstein_distance
 
 from datasets.discrete_moons import DiscreteMoonsDataset
-from moran.regime_a.forward import ParticleMoranForward
-from moran.regime_a.reverse import MoranReverseCTMC
+from moran.two_moons.forward import ParticleMoranForward
+from moran.two_moons.reverse import MoranReverseCTMC
 
 
 # ---------------------------------------------------------------------------
