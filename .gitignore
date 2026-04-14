@@ -2,11 +2,18 @@
 *.o
 *.cpp
 *.so
+*.hpp
 data/*.gtf
 data/*.fa
 
 # Raw data
 data/merfish/
+
+# GPU-only bridge (requires cupy, not available on macOS/MPS)
+bridges/cupy/
+
+# Planning / scratch docs
+plans/
 
 # Outputs and checkpoints
 outputs/
