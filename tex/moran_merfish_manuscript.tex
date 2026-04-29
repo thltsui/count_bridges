@@ -225,7 +225,14 @@ Training follows an Expectation--Maximisation scheme inspired by \citet{rozet202
 \subsection{Two Moons Proof of Concept}
 \label{sec:two_moons}
 
-As a controlled validation, we train the Moran Bridge on discretised two-moons data on a $128 \times 128$ grid. The key test: can the model transform \emph{uninformative DP prior noise} (uniform random clusters) into the structured target distribution? Table~\ref{tab:two_moons} confirms that it can, with metrics improving as population size $N$ increases.
+As a controlled validation, we train the Moran Bridge on discretised two-moons data on a $200 \times 200$ grid. The key test: can the model transform \emph{uninformative DP prior noise} (uniform random clusters) into the structured target distribution? Figure~\ref{fig:two_moons} illustrates the generative pipeline: (A)~the de~Finetti prior concentrates $N=2000$ particles on $\sim$9 atoms, (B)~the Moran Bridge reverse process transforms this into the two-moons geometry, and (C)~ground truth for comparison. Table~\ref{tab:two_moons} confirms quantitative fidelity, with metrics improving as population size $N$ increases.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/figure1_two_moons.pdf}
+\caption{\textbf{Two Moons generative process.} (A)~The de~Finetti prior ($\theta=1.0$) clusters 2000 particles onto $\sim$9 atoms via stick-breaking. (B)~The Moran Bridge reverse CTMC transforms this clustered prior into the target two-moons distribution ($N=100$). (C)~Ground truth two-moons samples for comparison.}
+\label{fig:two_moons}
+\end{figure}
 
 \begin{table}[ht]
 \centering
@@ -274,6 +281,33 @@ Moran Bridge & \textbf{3.8M} & \textbf{0.0150} & \textbf{0.0800} & \textbf{4.00}
 \bottomrule
 \end{tabular}
 \end{table}
+
+Figure~\ref{fig:merfish_metrics} provides a visual comparison across four distributional metrics. The Moran Bridge (at multiple $\theta$ values) consistently outperforms the Count Bridge baseline, with $\theta=1.0$ achieving the best results on MSE and energy distance.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/figure2_merfish_results.pdf}
+\caption{\textbf{MERFISH S1R1 quantitative comparison.} Top: Per-metric bar charts comparing Count Bridge (red) against Moran Bridge at $\theta \in \{1.0, 4.0, 10.0\}$. Bottom-left: Improvement factor over baseline. Bottom-right: Sensitivity to $\theta$---lower $\theta$ (stronger spatial coupling) improves MSE and energy distance but increases MMD slightly.}
+\label{fig:merfish_metrics}
+\end{figure}
+
+Figure~\ref{fig:merfish_spots} shows per-spot gene expression heatmaps for three representative validation spots: the Count Bridge produces characteristic mode collapse (bright isolated spikes amid near-zero background), while the Moran Bridge recovers the diffuse, heterogeneous patterns of the ground truth.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/figure3_merfish_spots.pdf}
+\caption{\textbf{Per-spot gene expression profiles.} Each row shows one validation spot (top-20 genes by variance). Left: ground truth. Centre: Count Bridge baseline (note bright spikes indicating mode collapse). Right: Moran Bridge ($\theta=1.0$) with substantially lower MSE and more biologically realistic heterogeneity.}
+\label{fig:merfish_spots}
+\end{figure}
+
+Figure~\ref{fig:merfish_distributions} further validates distributional quality by overlaying per-cell mean expression and within-cell variance distributions across all 15 validation spots.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/figure3b_merfish_distributions.pdf}
+\caption{\textbf{Per-cell expression distributions.} (A)~Mean expression per cell: the Moran Bridge (blue) closely tracks the ground truth (grey), while Count Bridge (orange) over-represents near-zero cells. (B)~Within-cell variance: Count Bridge collapses to low variance. (C)~Predicted vs.\ true mean expression scatter plot: Moran Bridge points cluster along $y=x$.}
+\label{fig:merfish_distributions}
+\end{figure}
 
 \subsection{Analysis: Inductive Bias versus Scale}
 
