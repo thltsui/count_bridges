@@ -251,28 +251,126 @@ For S1R1 MERFISH: $d_h = 512$, 5 encoder/decoder layers, ${\sim}$3.8M parameters
 
 The $L^2$-squared Chamfer distance penalises large outlying errors quadratically, avoiding regression to the mean. The aggregation loss softly enforces $\sum_i \hat{x}_0^{(i)} \approx X_0$. The zero-match penalty eliminates ``background smearing'' by penalising non-zero predictions on structurally zero genes.
 
-\subsection{EM Training Procedure}
+\subsection{Complete Algorithm}
 
-Training follows an Expectation--Maximisation scheme inspired by \citet{rozet2024em} and paralleling the EM procedure in \citet{fishman2025count}:
+We present the full pipeline in two self-contained algorithm blocks. Algorithm~\ref{alg:train} covers the EM training loop in detail; Algorithm~\ref{alg:gen} covers reverse-time generation at inference.
 
+% -----------------------------------------------------------------------
 \begin{algorithm}[H]
-\caption{Moran Bridge EM Training}
-\label{alg:em}
+\caption{Moran Bridge: EM Training (from data to denoiser checkpoint)}
+\label{alg:train}
 \begin{algorithmic}[1]
-\For{epoch $= 1, \ldots, T$}
-  \For{each batch of spots}
-    \State \textbf{E-step:} Infer latent per-cell profiles:
-    \State \quad 1. Initialise from DP prior: $x_T \sim \text{DP}(\theta, \nu)$
-    \State \quad 2. For $k = K, K{-}1, \ldots, 1$:
-    \State \qquad (a) Query denoiser: $\hat{x}_0 = f_\theta(x_{t_k}, t_k, \text{coords})$
-    \State \qquad (b) IPF rescale: enforce $\sum_i \hat{x}_0^{(i)} = X_0$
-    \State \qquad (c) Adjoint reverse step with spatial kernel
-    \State \quad 3. At $t = 0$: randomised rounding $\to$ integer profiles
-    \State \textbf{M-step:} Train denoiser on inferred profiles:
-    \State \quad 1. Sample $t \sim \text{Uniform}(0.05, 0.95)$
-    \State \quad 2. Forward Moran: $x_t = \texttt{simulate}(\hat{x}_0, \text{coords}, t)$
-    \State \quad 3. Backprop: $\nabla_\theta \mathcal{L}\bigl(f_\theta(x_t, t), \hat{x}_0, X_0\bigr)$
+\Require Dataset $\mathcal{D} = \{(X_0^{(s)}, \text{coords}^{(s)})\}$ of spots; hyperparameters $\gamma_{\text{mut}}, \kappa, h, \omega, K, T_{\text{EM}}, T_M$.
+\Ensure Trained denoiser $f_\theta$.
+
+\State \textbf{Precompute} reference counts $\mathcal{R} = \bigcup_s \text{cells}(s)$ for DP prior sampling.
+\State Initialise denoiser $f_\theta$ (DeepSets, $d_h$=512, 5 enc/dec layers).
+\State Initialise AdamW optimiser with cosine LR schedule.
+
+\For{EM epoch $= 1, \ldots, T_{\text{EM}}$}
+  \For{each minibatch $\mathcal{B} = \{(X_0^{(b)}, p^{(b)}, N^{(b)})\}_{b=1}^{B}$}
+
+    \Statex \hfill\textit{--- E-step: infer latent cell profiles via Moran adjoint reverse ---}
+    \State $f_\theta.\text{eval}()$
+    \For{each spot $b \in \mathcal{B}$}
+      \State \textbf{DP prior sample:} $x_{t_K}^{(b)} \leftarrow \text{DP-StickBreaking}(\theta, \mathcal{R}, N^{(b)})$
+      \Comment{Eq.~\ref{eq:ipm}: importance fn initialised from truncated stick-breaking}
+    \EndFor
+
+    \For{$k = K, K{-}1, \ldots, 1$}
+      \State $t_k \leftarrow k/K$;\quad $t_{k-1} \leftarrow (k-1)/K$;\quad $\Delta t \leftarrow 1/K$
+      \State \textbf{Denoiser query:}
+        $\hat{x}_0^{(b)} \leftarrow f_\theta\!\bigl(x_{t_k}^{(b)},\; t_k,\; \text{mask}^{(b)},\; p^{(b)}\bigr)$
+        \hfill\textit{[B, N, G] in parallel}
+      \State \textbf{IPF rescale:} $\hat{x}_0^{(b)} \leftarrow \hat{x}_0^{(b)} \cdot \frac{X_0^{(b)}}{\sum_i \hat{x}_{0,i}^{(b)} + \varepsilon}$
+        \hfill\textit{enforce bulk sum constraint $\sum_i \hat{x}_0^{(i)} = X_0$}
+      \If{$t_{k-1} < 0.01$} \Comment{Final step}
+        \State \textbf{Randomised rounding:} $x_0^{(b)} \leftarrow \text{RandRound}(\hat{x}_0^{(b)},\, X_0^{(b)})$
+        \hfill\textit{Poisson rounding preserving integer totals}
+      \Else
+        \State \textbf{Compute importance function} (Eq.~\ref{eq:gaussian_ipm}):
+          $\log\Phi^*(x^{(b)}_i) = -\|x^{(b)}_{t_k,i} - \hat{x}_{0,i}^{(b)}\|^2 / (4\mu(t_k))$
+        \State \textbf{Guided mutation} (Eq.~\ref{eq:guided_rates}): for each $(i,g)$:
+        \Statex \qquad $r_{\text{birth}} = \gamma_{\text{mut}}\lambda(t_k)\exp(\omega\,(-2\delta_g^{(i)}-1)/4\mu)$;\;
+                  $r_{\text{death}} = \gamma_{\text{mut}}\lambda(t_k) x_g^{(i)}\exp(\omega\,(2\delta_g^{(i)}-1)/4\mu)$
+        \State \textbf{Adjoint resampling} (Eq.~\ref{eq:adjoint_resamp}): compute $\mathcal{W}_{ij} = K(p_i,p_j)\exp(\omega\,\Delta\log\Phi^*_{ij})$
+        \Statex \qquad $p_{\text{jump}}^{(i)} = \min\!\bigl(\tfrac{\kappa\lambda}{N}\textstyle\sum_j \mathcal{W}_{ij}\,\Delta t,\; 0.9\bigr)$;
+                  draw $m_i \sim \text{Bernoulli}(p_{\text{jump}}^{(i)})$;
+                  if $m_i{=}1$: $x^{(b)}_i \leftarrow x^{(b)}_{s_i}$, $s_i \sim \text{Cat}(\mathcal{W}_i/\|\mathcal{W}_i\|_1)$
+        \State $x_{t_{k-1}}^{(b)} \leftarrow x_{t_k}^{(b)}$ after mutation + resampling
+      \EndIf
+    \EndFor
+
+    \Statex \hfill\textit{--- M-step: train denoiser on inferred profiles ---}
+    \State $f_\theta.\text{train}()$
+    \For{$m = 1, \ldots, T_M$}
+      \State Sample $t \sim \text{Uniform}(0.05, 0.95)$ independently per spot
+      \State \textbf{Forward Moran} (Eq.~\ref{eq:generator}): for each spot $b$ with $n = N^{(b)}$ cells:
+      \Statex \qquad \textit{Mutation:} $\text{births} \sim \text{Poi}(\gamma_{\text{mut}}\lambda(t)\Delta\tau)$;\;
+               $\text{deaths} \sim \text{Bin}(x_g, 1{-}e^{-\gamma_{\text{mut}}\lambda(t)\Delta\tau})$
+      \Statex \qquad \textit{Gene-level resampling:} $m_g^{(i)} \sim \text{Ber}(p_{\text{resamp}}^{(i)})$;\;
+               $s_g^{(i)} \sim \text{Cat}(K_i/\|K_i\|_1)$;\;
+               $x_g^{(i)} \leftarrow x_g^{(s_g^{(i)})}$ if $m_g^{(i)}{=}1$
+      \State \textbf{Compute loss:}
+        $\mathcal{L} = \mathcal{L}_{\text{Chamfer}}^{L^2}(\hat{x}_0, x_0) + 0.1\,\mathcal{L}_{\text{agg}} + 5.0\,\mathcal{L}_{\text{zero}}$
+      \State \textbf{Backprop + clip gradients} ($\|\nabla\|\leq 1$); AdamW step; cosine LR decay
+    \EndFor
   \EndFor
+  \If{epoch $\bmod 5 = 0$} Save checkpoint \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+% -----------------------------------------------------------------------
+\begin{algorithm}[H]
+\caption{Moran Bridge: Reverse Generation (checkpoint $\to$ per-cell profiles)}
+\label{alg:gen}
+\begin{algorithmic}[1]
+\Require Trained $f_\theta$; observation $X_0 \in \mathbb{Z}_{\geq 0}^G$ (bulk spot); cell coords $p^{(1)},\ldots,p^{(N)}$; steps $K$; guidance weight $\omega$.
+\Ensure Integer per-cell expression matrix $\hat{X} \in \mathbb{Z}_{\geq 0}^{N \times G}$.
+
+\State \textbf{Initialise from DP prior:} $x_{t_K} \leftarrow \text{DP-StickBreaking}(\theta, \mathcal{R}, N)$
+\hfill\textit{few atoms, heavy clustering}
+\State Precompute spatial kernel $K_{ij} = \exp(-\|p_i - p_j\|^2 / 2h^2)$, $K_{ii} = 0$
+
+\For{$k = K, K{-}1, \ldots, 1$}
+  \State $t_k \leftarrow k/K$;\quad $\mu(t_k) \leftarrow \gamma_{\text{mut}}(1/(1{-}t_k) - 1)$;\quad $\Delta t \leftarrow 1/K$
+
+  \Statex \hfill\textit{--- Denoiser query + IPF projection ---}
+  \State $\hat{x}_0 \leftarrow f_\theta(x_{t_k}, t_k, \text{mask}, p)$
+  \hfill\textit{DeepSets forward pass, $[N,G]$}
+  \State $\hat{x}_0 \leftarrow \hat{x}_0 \cdot X_0 / (\sum_i \hat{x}_{0,i} + \varepsilon)$
+  \hfill\textit{IPF rescale: enforce bulk constraint}
+
+  \If{$k = 1$} \Comment{Final step: discretise}
+    \State $\hat{X} \leftarrow \text{RandRound}(\hat{x}_0, X_0)$
+    \hfill\textit{Poisson rounding; $\sum_i \hat{X}_i = X_0$ a.s.}
+    \State \Return $\hat{X}$
+  \EndIf
+
+  \Statex \hfill\textit{--- Compute importance function ---}
+  \State $\log\Phi^*_i \leftarrow -\|x_{t_k,i} - \hat{x}_{0,i}\|^2 / (4\mu(t_k))$
+  \hfill\textit{Gaussian IPM surrogate, Eq.~\ref{eq:gaussian_ipm}}
+
+  \Statex \hfill\textit{--- Guided reverse mutation (per gene, vectorised) ---}
+  \State $\delta_g^{(i)} \leftarrow x_{t_k,g}^{(i)} - \hat{x}_{0,g}^{(i)}$
+  \State $r_{\text{birth}}^{(i,g)} \leftarrow \gamma_{\text{mut}}\lambda(t_k) \exp\!\bigl(\omega(-2\delta_g^{(i)}{-}1)/4\mu\bigr)$
+  \State $r_{\text{death}}^{(i,g)} \leftarrow \gamma_{\text{mut}}\lambda(t_k) x_g^{(i)} \exp\!\bigl(\omega(2\delta_g^{(i)}{-}1)/4\mu\bigr)$
+  \State $x_{t_k,g}^{(i)} \mathrel{+}= \mathbf{1}[\text{Uniform}(0,1) < r_{\text{birth}}\Delta t]$
+  \hfill\textit{birth events}
+  \State $x_{t_k,g}^{(i)} \mathrel{-}= \mathbf{1}[x_g^{(i)}>0 \;\wedge\; \text{Uniform}(0,1) < r_{\text{death}}\Delta t]$
+  \hfill\textit{death events}
+
+  \Statex \hfill\textit{--- Adjoint resampling (backward coalescent, per cell) ---}
+  \State Recompute $\log\Phi^*_i$ after mutation
+  \State $\mathcal{W}_{ij} \leftarrow K_{ij} \cdot \exp\!\bigl(\omega(\log\Phi^*_j - \log\Phi^*_i)\bigr)$
+  \hfill\textit{$[N,N]$ importance-weighted kernel}
+  \State $p_{\text{jump}}^{(i)} \leftarrow \min\!\bigl(\tfrac{\kappa\lambda(t_k)}{N}\sum_j \mathcal{W}_{ij}\Delta t,\; 0.9\bigr)$
+  \State Draw $m_i \sim \text{Bernoulli}(p_{\text{jump}}^{(i)})$ for all $i$
+  \State For cells $i$ with $m_i = 1$: draw $s_i \sim \text{Categorical}(\mathcal{W}_i / \|\mathcal{W}_i\|_1)$;\; $x_{t_k}^{(i)} \leftarrow x_{t_k}^{(s_i)}$
+  \hfill\textit{whole-cell coalescence}
+
+  \State Clip: $x_{t_k} \leftarrow \text{clip}(x_{t_k}, 0, 500)$
 \EndFor
 \end{algorithmic}
 \end{algorithm}
