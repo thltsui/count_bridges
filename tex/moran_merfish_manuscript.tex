@@ -160,31 +160,73 @@ where $\nu = \text{Poisson}(\beta/\mu)$ is the base measure~\citep{ewens2004math
 
 We sample from this prior using truncated stick-breaking~\citep{sethuraman1994constructive}: draw $K_{\text{trunc}}$ prototype profiles from $\nu$, construct mixture weights via $\beta_k \sim \text{Beta}(1, \theta)$, and assign each cell to a cluster.
 
-\subsection{Reverse Generative Process}
+\subsection{Reverse Generative Process via Backward Monte Carlo}
 
-By Anderson's theorem~\citep{anderson1982reverse}, the rate of the time-reversed CTMC jumping from $X$ to $Y$ is:
+\paragraph{Adjoint transport and the importance function.}
+The reverse-time generation problem is structurally identical to \emph{backward Monte Carlo} as used in nuclear engineering and neutron transport.
+In that context, one avoids simulating all forward particle trajectories by instead running a fictitious \emph{adjoint} process backward from the detector, weighted by an \emph{importance function} $\Phi^*(X, t)$ that encodes how much a particle in state $X$ at time $t$ contributes to the detector response.
+Here, the analogue of the detector response is the target data distribution $p_0$, and the importance function is the time-marginal density $p_t(X)$.
+
+By Anderson's theorem~\citep{anderson1982reverse}, the rates of the exact time-reversed CTMC are:
 \begin{equation}
-  R_{X \to Y}(t) = Q_{Y \to X}(t)\;\frac{p_t(Y)}{p_t(X)}.
+  R_{X \to Y}(t) = Q_{Y \to X}(t)\;\frac{p_t(Y)}{p_t(X)},
   \label{eq:anderson}
 \end{equation}
+where $Q_{Y \to X}$ are the forward rates (Eq.~\ref{eq:generator}) and the ratio $p_t(Y)/p_t(X)$ is the importance ratio $\Phi^*(Y)/\Phi^*(X)$ in backward Monte Carlo language.
+Running the CTMC with these modified rates samples from $p_0$ exactly---but only if $p_t$ is known.
 
-Since $p_t(X)$ is intractable for the interacting system, we approximate via the \emph{Independent Pseudo-Marginal} factorisation ($\kappa = 0$):
+\paragraph{The Independent Pseudo-Marginal (IPM) approximation.}
+For the interacting $N$-particle system, $p_t(X)$ is intractable.
+We approximate it via the \emph{Independent Pseudo-Marginal} factorisation, which treats each cell independently by setting $\kappa=0$ in the density but retaining spatial coupling in the rates:
 \begin{equation}
-  \frac{p_t(Y)}{p_t(X)}
-  \;\approx\;
-  \prod_{i=1}^{N} \frac{P_{\text{mut}}\!\bigl(y^{(i)}_t \mid \hat{x}_0^{(i)}\bigr)}{P_{\text{mut}}\!\bigl(x^{(i)}_t \mid \hat{x}_0^{(i)}\bigr)},
+  \Phi^*(X, t) \;\approx\; \prod_{i=1}^{N} P_{\text{mut}}\!\bigl(x^{(i)}_t \mid \hat{x}_0^{(i)}, t\bigr),
+  \label{eq:ipm}
 \end{equation}
-where $\hat{x}_0^{(i)}$ is the neural network's prediction. The Skellam marginal is further approximated by a Gaussian CLT:
-\begin{equation}
-  \log P_{\text{mut}}(x_t \mid \hat{x}_0) \;\approx\; -\frac{\|x_t - \hat{x}_0\|^2}{4\,\mu(t)} + \text{const},
-  \qquad \mu(t) = \gamma_{\text{mut}}\bigl(\tfrac{1}{1-t}-1\bigr).
-\end{equation}
+where $\hat{x}_0^{(i)}$ is the denoiser's prediction of cell $i$'s clean profile.
+This is the continuous-time analogue of the independent-particle approximation in reactor physics, where the joint adjoint flux is factored into single-particle adjoint fluxes.
 
-This yields guided reverse rates for mutation (birth/death rates modulated by $\exp(\omega \cdot \text{residual})$) and \emph{adjoint resampling}:
+\paragraph{Gaussian surrogate for the importance ratio.}
+Computing the exact Skellam likelihood $P_{\text{mut}}(x_t \mid \hat{x}_0, t)$ requires Bessel function evaluations---numerically expensive and incompatible with MPS acceleration.
+Under the CLT approximation (accurate for large integrated rate $\mu(t)$), the Skellam displacement $x_t - \hat{x}_0 \approx \mathcal{N}(0, 2\mu(t)I_G)$, giving the surrogate importance function:
 \begin{equation}
-  R_{\text{resamp}}(i \to j) = \frac{\kappa\lambda(t)}{N}\,K(p_i, p_j)\;\exp\!\bigl(\omega[\log P_j - \log P_i]\bigr),
+  \log \Phi^*(x^{(i)}_t, t) \;\approx\; -\frac{\|x^{(i)}_t - \hat{x}_0^{(i)}\|^2}{4\,\mu(t)},
+  \qquad \mu(t) = \gamma_{\text{mut}}\!\Bigl(\tfrac{1}{1-t}-1\Bigr).
+  \label{eq:gaussian_ipm}
 \end{equation}
-where $\log P_i$ is cell $i$'s pseudo-marginal log-likelihood. This ensures that during reverse-time generation, cells with poor fit to the target are preferentially overwritten by spatially proximate cells with better fit.
+This squared-distance computation is fully vectorisable on MPS/GPU with no special function calls.
+
+\paragraph{Guided reverse mutation.}
+For gene $g$ of cell $i$, the importance ratio for a birth event $x_g^{(i)} \to x_g^{(i)} + 1$ is:
+\[
+  \frac{\Phi^*(x^{(i)} + e_g)}{\Phi^*(x^{(i)})}
+  \approx \exp\!\Bigl(\frac{-2\,\delta_g^{(i)} - 1}{4\mu(t)}\Bigr),
+\]
+where $\delta_g^{(i)} = x_g^{(i)} - \hat{x}_{0,g}^{(i)}$ is the gene residual.
+The guided reverse birth and death rates are therefore:
+\begin{align}
+  r_{\text{birth}}^{(i,g)} &= \gamma_{\text{mut}}\lambda(t) \cdot
+    \exp\!\Bigl(\omega\,\frac{-2\delta_g^{(i)} - 1}{4\mu(t)}\Bigr), \notag\\
+  r_{\text{death}}^{(i,g)} &= \gamma_{\text{mut}}\lambda(t)\,x_g^{(i)} \cdot
+    \exp\!\Bigl(\omega\,\frac{2\delta_g^{(i)} - 1}{4\mu(t)}\Bigr),
+  \label{eq:guided_rates}
+\end{align}
+with guidance weight $\omega > 0$.
+When the current count exceeds the prediction ($\delta_g^{(i)} > 0$), deaths are amplified and births suppressed; when it falls below, births are amplified.
+This is the discrete-integer analogue of score-based guidance in continuous diffusion models~\citep{dhariwal2021diffusion}.
+
+\paragraph{Adjoint resampling (backward coalescent).}
+The same importance-weighting principle applies to the Moran resampling in reverse.
+The adjoint resampling rate for cell $i$ to coalesce onto cell $j$'s full profile is:
+\begin{equation}
+  R_{\text{resamp}}(i \to j) = \frac{\kappa\,\lambda(t)}{N}\,K(p_i, p_j)\;
+    \exp\!\Bigl(\omega\,\bigl[\log\Phi^*(x^{(j)}) - \log\Phi^*(x^{(i)})\bigr]\Bigr).
+  \label{eq:adjoint_resamp}
+\end{equation}
+The exponential factor $e^{\omega\Delta\log\Phi^*}$ acts as an importance weight: cells with \emph{low} likelihood under the denoiser's prediction are preferentially overwritten by spatially proximate cells with \emph{high} likelihood.
+In nuclear engineering terms, this is the adjoint-weighted coalescence: particle histories contributing more to the final response are amplified, while low-importance histories are collapsed.
+The full $N \times N$ weight matrix $\mathcal{W}_{ij} = K(p_i, p_j)\cdot e^{\omega\Delta\log\Phi^*_{ij}}$ is computed in a single batched matrix operation; jump probabilities are $p_{\text{jump}}^{(i)} = \min(\frac{\kappa\lambda}{N}\sum_j\mathcal{W}_{ij}\Delta t,\;0.9)$, and the target cell is drawn from $\text{Categorical}(\mathcal{W}_i/\|\mathcal{W}_i\|_1)$.
+
+Note that adjoint resampling performs \emph{whole-cell} coalescence ($x^{(i)} \leftarrow x^{(j)}$), in contrast to the gene-level copying of the forward process. This asymmetry is intentional: in generation, a cell rapidly adopts a well-fitting neighbour's full profile as a global correction, whereas the forward process uses gene-level diffusion to maintain transcriptional diversity.
 
 %% ==================================================================
 \section{Architecture and Training}
