@@ -11,7 +11,7 @@ class MerfishDeconv:
         context_dim=None,
         data_path="data/merfish/", 
         num_replicates=1,
-        img_size=256
+        img_size=16
     ):
         import os
         base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -56,18 +56,7 @@ class MerfishDeconv:
         return {
             "x_0": x_0_count,
             "x_1": x_1_count,
+            "img": x_0_img,
             "context": X_0.unsqueeze(0).repeat(x_0_count.shape[0], 1),
             "X_0": X_0
-        }
-
-        return {
-            "x_0": {
-                "img":x_0_img,
-                "counts": x_0_count
-            },
-            "x_1": {
-                "img": x_1_img,
-                "counts": x_1_count
-            },
-            "X_0": {"counts": X_0}
         }

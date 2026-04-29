@@ -205,7 +205,7 @@ class MultimodalUViT(nn.Module):
     def no_weight_decay(self):
         return {'pos_embed', 'count_embed.count_pos_embed'}
 
-    def forward(self, x_t, t, y=None, noise=None, img=None):
+    def forward(self, x_t, t, y=None, noise=None, img=None, **kwargs):
         """
         Forward pass for multimodal inputs.
         

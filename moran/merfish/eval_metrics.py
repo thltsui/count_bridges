@@ -92,11 +92,24 @@ def one_step_predict(model, x_0_gt, coords, X_0_bulk, fwd, device, t=0.5):
 
 # ── evaluation loop ───────────────────────────────────────────────────────────
 
-def evaluate_model(ckpt_path, dataset, val_indices, fwd, device, t=0.5, label="", use_coords=True):
+def evaluate_model(ckpt_path, dataset, val_indices, fwd, device, t=0.5, label="", use_coords=True,
+                   hidden_dim=256, n_enc_layers=3, n_dec_layers=3, noise_dim=32):
     G = dataset.G
-    model = MerfishDenoiser(G=G, hidden_dim=256, n_enc_layers=3, n_dec_layers=3, use_coords=use_coords).to(device)
+    
+    # Pre-read the config to dynamically set model size
     if Path(ckpt_path).exists():
         ckpt = torch.load(ckpt_path, map_location=device)
+        config = ckpt.get("config", {})
+        hidden_dim = config.get("hidden_dim", hidden_dim)
+        n_enc_layers = config.get("n_enc_layers", n_enc_layers)
+        n_dec_layers = config.get("n_dec_layers", n_dec_layers)
+        noise_dim = config.get("noise_dim", noise_dim)
+    else:
+        ckpt = None
+
+    model = MerfishDenoiser(G=G, hidden_dim=hidden_dim, n_enc_layers=n_enc_layers, 
+                            n_dec_layers=n_dec_layers, noise_dim=noise_dim, use_coords=use_coords).to(device)
+    if ckpt is not None:
         model.load_state_dict(ckpt["model_state"])
         print(f"  Loaded: {ckpt_path}")
     else:
@@ -137,6 +150,9 @@ def main():
     parser.add_argument("--device",    default="mps")
     parser.add_argument("--eval-t",    type=float, default=0.5)
     parser.add_argument("--out-json",  default="outputs/metrics_table.json")
+    parser.add_argument("--sweep-dir", default=None,
+                        help="If provided, override Moran checkpoint paths to look "
+                             "inside this sweep directory (e.g. outputs/sweep_gene_level_XXXXX)")
     args = parser.parse_args()
 
     device = torch.device(args.device if (args.device == "cpu" or
@@ -155,13 +171,23 @@ def main():
 
     fwd = MerfishMoranForward(G=dataset.G, n_substeps=5)
 
-    configs = [
-        ("Count Bridge (Independent Skellam)", "outputs/merfish_cb_run_50/checkpoints/epoch_050.pt", False),
-        ("Moran θ=1.0 (Strong Drift)",         "outputs/merfish_moran_theta_1.0/checkpoints/epoch_050.pt", True),
-        ("Moran θ=2.0 (Biological Limit)",     "outputs/merfish_moran_theta_2.0/checkpoints/epoch_050.pt", True),
-        ("Moran θ=4.0 (Moderate Drift)",       "outputs/merfish_moran_theta_4.0/checkpoints/epoch_050.pt", True),
-        ("Moran θ=10.0 (Weak Drift)",           "outputs/merfish_moran_theta_10.0/checkpoints/epoch_050.pt", True),
-    ]
+    if args.sweep_dir:
+        sd = args.sweep_dir.rstrip("/")
+        configs = [
+            ("Count Bridge (Baseline)",         "outputs/experiment_ambitious_cb_20260425_223936/merfish_cb_baseline/checkpoints/epoch_040.pt", True),
+            ("Moran θ=1.0 (Strong Drift)",     f"{sd}/merfish_moran_theta_1.0/checkpoints/epoch_060.pt", True),
+            ("Moran θ=2.0 (Biological Limit)",  f"{sd}/merfish_moran_theta_2.0/checkpoints/epoch_060.pt", True),
+            ("Moran θ=4.0 (Moderate Drift)",    f"{sd}/merfish_moran_theta_4.0/checkpoints/epoch_060.pt", True),
+            ("Moran θ=10.0 (Weak Drift)",       f"{sd}/merfish_moran_theta_10.0/checkpoints/epoch_060.pt", True),
+        ]
+    else:
+        configs = [
+            ("Count Bridge (Independent Skellam)", "outputs/merfish_cb_run_50/checkpoints/epoch_050.pt", False),
+            ("Moran θ=1.0 (Strong Drift)",         "outputs/merfish_moran_theta_1.0/checkpoints/epoch_060.pt", True),
+            ("Moran θ=2.0 (Biological Limit)",     "outputs/merfish_moran_theta_2.0/checkpoints/epoch_060.pt", True),
+            ("Moran θ=4.0 (Moderate Drift)",       "outputs/merfish_moran_theta_4.0/checkpoints/epoch_060.pt", True),
+            ("Moran θ=10.0 (Weak Drift)",           "outputs/merfish_moran_theta_10.0/checkpoints/epoch_060.pt", True),
+        ]
 
     results = []
     for label, ckpt, use_coords in configs:

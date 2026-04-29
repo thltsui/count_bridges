@@ -381,28 +381,29 @@ def train_merfish(
                 "config": {
                     "gamma_mut": gamma_mut, "kappa": kappa,
                     "h_kernel": h_kernel, "G": G,
+                    "hidden_dim": hidden_dim,
+                    "n_enc_layers": n_enc_layers,
+                    "n_dec_layers": n_dec_layers,
+                    "noise_dim": noise_dim,
                 },
             }, ckpt_path)
             log.info(f"  Saved checkpoint: {ckpt_path}")
+            
+            # --- Auto-plotting hook (Safe Subprocess) ---
+            # Generate a plot natively right away so the user can track progress "along the way"
+            try:
+                import os
+                plot_dir = out_dir / "plots"
+                plot_dir.mkdir(exist_ok=True)
+                png_path = plot_dir / f"spatial_epoch_{em_epoch:03d}.png"
+                log.info(f"  Triggering auto-plot subprocess for {ckpt_path} -> {png_path}")
+                val_cmd = f"python -m moran.merfish.plot_stochastic " \
+                          f"--moran-ckpt {ckpt_path} " \
+                          f"--no-cb --output {png_path}"
+                os.system(f"{val_cmd} > /dev/null 2>&1 &")
+            except Exception as e:
+                log.warning(f"Auto-plotting trigger failed: {e}")
 
     log.info(f"\nTraining complete. Checkpoints saved in {ckpt_dir}")
-
-    # --- Auto-plotting hook ---
-    try:
-        from moran.merfish.plot import plot_spatial_comparison
-        # Determine the highly expressed gene index objectively based off reference totals
-        g_idx = int(all_counts.sum(axis=0).argmax())
-        pt_path = str(ckpt_dir / f"epoch_{n_em_epochs:03d}.pt")
-        png_path = str(out_dir / f"spatial_gene_{g_idx}.png")
-        log.info(f"Triggering auto-plot for highly expressed gene index {g_idx} leveraging {pt_path}")
-        plot_spatial_comparison(
-            data_path=f"{data_dir}/{npz_name}",
-            moran_ckpt=pt_path,
-            cb_ckpt="outputs/merfish_cb_run/checkpoints/epoch_020.pt", # Dummy unless previously trained natively
-            output_path=png_path,
-            gene_idx=g_idx
-        )
-    except Exception as e:
-        log.warning(f"Auto-plotting trigger failed: {e}")
-
     return model
+

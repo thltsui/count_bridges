@@ -65,7 +65,8 @@ def run_sampling_evaluation(
         n_steps=n_steps,
         sum_conditioned=sum_conditioned,
         condition_on_end_time=condition_on_end_time,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        device=next(trained_model.parameters()).device
     )
     
     eval_data = eval_result['eval_data']

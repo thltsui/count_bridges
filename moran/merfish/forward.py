@@ -113,7 +113,7 @@ class MerfishMoranForward:
         N: int,
     ) -> np.ndarray:
         """
-        Moran kernel-weighted resampling step.
+        Independent per-gene Moran resampling step (Mocking Gene Transfer / Diffusion).
 
         x: [N, G] int
         K: [N, N] spatial kernel (diagonal 0)
@@ -121,12 +121,24 @@ class MerfishMoranForward:
         x_new = x.copy()
         for i in range(N):
             total_rate = self.kappa * rate_mult / N * K[i].sum() * dt
-            if total_rate > 0 and np.random.rand() < min(total_rate, 0.9):
-                w = K[i]
-                ws = w.sum()
-                if ws > 0:
-                    j = np.random.choice(N, p=w / ws)
-                    x_new[i] = x[j].copy()
+            p_replace = min(total_rate, 0.9)
+            
+            if p_replace > 0:
+                # 1. Independent mask of which genes are replaced in this dt time step
+                replaced_mask = np.random.rand(self.G) < p_replace
+                num_replaced = replaced_mask.sum()
+                
+                if num_replaced > 0:
+                    w = K[i]
+                    ws = w.sum()
+                    if ws > 0:
+                        # 2. For each gene to be replaced, sample a source neighbor independently
+                        j_choices = np.random.choice(N, size=num_replaced, p=w / ws)
+                        
+                        # 3. Apply the replacements for the specific genes
+                        genes = np.where(replaced_mask)[0]
+                        x_new[i, genes] = x[j_choices, genes]
+                        
         return x_new
 
     def simulate(

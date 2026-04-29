@@ -85,7 +85,8 @@ def evaluate_model(model: torch.nn.Module, bridge: Any, dataset: Any,
                   force_regenerate: bool = False, n_steps: int = 10,
                   sum_conditioned: bool = False,
                   condition_on_end_time: bool = False,
-                  collate_fn: Optional[Callable] = None) -> Dict[str, Any]:
+                  collate_fn: Optional[Callable] = None,
+                  device: str = "cuda") -> Dict[str, Any]:
     """
     Smart evaluation dispatcher with caching and data type detection
     
@@ -113,10 +114,10 @@ def evaluate_model(model: torch.nn.Module, bridge: Any, dataset: Any,
     logging.info(f"Detected data type: {data_type}")
     
     # Generate evaluation data 
-    eval_data = generate_evaluation_data(model, bridge, dataset, n_samples, n_steps, sum_conditioned=sum_conditioned, condition_on_end_time=condition_on_end_time, collate_fn=collate_fn)
+    eval_data = generate_evaluation_data(model, bridge, dataset, n_samples, n_steps, sum_conditioned=sum_conditioned, condition_on_end_time=condition_on_end_time, collate_fn=collate_fn, device=device)
     
     # Generate true distribution data by sampling bridge directly
-    true_data = generate_true_trajectory_data(bridge, dataset, n_samples, n_steps, condition_on_end_time=condition_on_end_time, collate_fn=collate_fn)
+    true_data = generate_true_trajectory_data(bridge, dataset, n_samples, n_steps, condition_on_end_time=condition_on_end_time, collate_fn=collate_fn, device=device)
     
     # Compute evaluation metrics
     metrics = compute_evaluation_metrics(eval_data)
@@ -163,7 +164,8 @@ def generate_evaluation_data(
     n_steps: int = 10,
     sum_conditioned: bool = False,
     condition_on_end_time: bool = False,
-    collate_fn: Optional[Callable] = None
+    collate_fn: Optional[Callable] = None,
+    device: str = "cuda"
 ) -> Dict[str, np.ndarray]:
     """Generate evaluation data from trained model"""
     model.eval()
@@ -177,15 +179,15 @@ def generate_evaluation_data(
         x0_target = {k: batch['x_0'][k].squeeze(0).numpy() for k in batch['x_0']}
         x1_source = {k: batch['x_1'][k].squeeze(0).numpy() for k in batch['x_1']}
 
-        x0_torch = {k: torch.tensor(x0_target[k]).cuda() for k in x0_target}
-        x1_torch = {k: torch.tensor(x1_source[k]).cuda() for k in x1_source}
+        x0_torch = {k: torch.tensor(x0_target[k]).to(device) for k in x0_target}
+        x1_torch = {k: torch.tensor(x1_source[k]).to(device) for k in x1_source}
     else:
         x0_target = batch['x_0'].squeeze(0).numpy()# .reshape(-1, batch['x_0'].shape[-1])
         x1_source = batch['x_1'].squeeze(0).numpy()# .reshape(-1, batch['x_1'].shape[-1])n
 
         # Convert to torch tensors only for bridge call
-        x0_torch = torch.tensor(x0_target).cuda()
-        x1_torch = torch.tensor(x1_source).cuda()
+        x0_torch = torch.tensor(x0_target).to(device)
+        x1_torch = torch.tensor(x1_source).to(device)
     
     
     with torch.no_grad():
@@ -193,31 +195,31 @@ def generate_evaluation_data(
         sampler_kwargs = {
             'x_1': x1_torch,
             'z': {},
-            'model': model.to('cuda'),
+            'model': model.to(device),
             'return_trajectory': True,
             'return_x_hat': True,
         }
         # if 'z' in batch:
         # z = batch['z'].squeeze(0).numpy()# .reshape(-1, batch['z'].shape[-1])
-        sampler_kwargs['z'] = {k: batch[k].squeeze(0).cuda() for k in batch if k not in ['x_0', 'x_1', 'X_0', 'group_sizes', 'A']}
+        sampler_kwargs['z'] = {k: batch[k].squeeze(0).to(device) for k in batch if k not in ['x_0', 'x_1', 'X_0', 'group_sizes', 'A']}
         
         # Add target mean for mean constrained bridges
         if sum_conditioned:
             batch_X_0 = batch['X_0']
             if isinstance(batch_X_0, dict):
-                batch_X_0 = {k: batch_X_0[k].squeeze(0).cuda() for k in batch_X_0}
+                batch_X_0 = {k: batch_X_0[k].squeeze(0).to(device) for k in batch_X_0}
             else:
-                batch_X_0 = batch_X_0.squeeze(0).cuda()
+                batch_X_0 = batch_X_0.squeeze(0).to(device)
             sampler_kwargs['z']['target_sum'] = batch_X_0
-            sampler_kwargs['z']['A'] = batch['A'].cuda()
+            sampler_kwargs['z']['A'] = batch['A'].to(device)
             if isinstance(batch['x_0'], dict) and 'X_0' in batch:
                 # this lets us condition on x_0 if it is provided (and not in X_0)
                 # using the fact that the model "samples" from x_0 if x_0 is provided, e.g. "conditional" sampling
                 # across modalities 
                 context_x_0 = {}
                 for k in batch['x_0']:
-                    if k not in batch['X_0']:
-                        context_x_0[k] = batch['x_0'][k].cuda()
+                    if not isinstance(batch['X_0'], dict) or k not in batch['X_0']:
+                        context_x_0[k] = batch['x_0'][k].to(device)
 
                 sampler_kwargs['z']['x_0'] = context_x_0
 
@@ -226,9 +228,6 @@ def generate_evaluation_data(
                     sampler_kwargs['x_start_time'] = {k: context_x_0[k] for k in context_x_0}
             logging.info("Using mean constrained bridge with target mean")
         
-        # Add n_steps to sampler
-        sampler_kwargs['n_steps'] = n_steps
-            
         # Generate samples with trajectories
         result = bridge.sampler(**sampler_kwargs)
         
@@ -302,7 +301,7 @@ def compute_evaluation_metrics(eval_data: Dict[str, np.ndarray]) -> Dict[str, fl
     return metrics
 
 
-def generate_true_trajectory_data(bridge: Any, dataset: Any, n_samples: int = 1000, n_steps: int = 10, condition_on_end_time: bool = False, collate_fn: Optional[Callable] = None) -> Dict[str, np.ndarray]:
+def generate_true_trajectory_data(bridge: Any, dataset: Any, n_samples: int = 1000, n_steps: int = 10, condition_on_end_time: bool = False, collate_fn: Optional[Callable] = None, device: str = "cuda") -> Dict[str, np.ndarray]:
     """
     Generate true trajectory data by sampling bridge directly at each time step.
     This is completely bridge-agnostic and doesn't require any dummy models.
@@ -317,8 +316,8 @@ def generate_true_trajectory_data(bridge: Any, dataset: Any, n_samples: int = 10
         x0_true = {k: batch['x_0'][k].squeeze(0).numpy() for k in batch['x_0']}
         x1_true = {k: batch['x_1'][k].squeeze(0).numpy() for k in batch['x_1']}
 
-        x0_torch = {k: torch.tensor(x0_true[k]).cuda() for k in x0_true}
-        x1_torch = {k: torch.tensor(x1_true[k]).cuda() for k in x1_true}
+        x0_torch = {k: torch.tensor(x0_true[k]).to(device) for k in x0_true}
+        x1_torch = {k: torch.tensor(x1_true[k]).to(device) for k in x1_true}
 
         x_trajectory = {k: [] for k in x0_true}
         x_hat_trajectory = {k: [] for k in x0_true}
@@ -327,8 +326,8 @@ def generate_true_trajectory_data(bridge: Any, dataset: Any, n_samples: int = 10
         x1_true = batch['x_1'].squeeze(0).numpy()# .reshape(-1, batch['x_1'].shape[-1])
     
         # Convert to torch tensors
-        x0_torch = torch.tensor(x0_true).cuda() if torch.cuda.is_available() else torch.tensor(x0_true)
-        x1_torch = torch.tensor(x1_true).cuda() if torch.cuda.is_available() else torch.tensor(x1_true)
+        x0_torch = torch.tensor(x0_true).to(device)
+        x1_torch = torch.tensor(x1_true).to(device)
 
         x_trajectory = []
         x_hat_trajectory = []

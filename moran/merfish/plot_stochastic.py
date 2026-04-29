@@ -22,18 +22,31 @@ from moran.merfish.experiment import e_step
 from moran.merfish.count_bridge import MerfishCountBridgeForward, MerfishCountBridgeReverse
 
 def _load_model(ckpt_path: str, G: int, device: torch.device, use_coords: bool = True) -> tuple:
-    model = MerfishDenoiser(G=G, hidden_dim=256, n_enc_layers=3, n_dec_layers=3, use_coords=use_coords).to(device)
     theta = None
     cfg = {}
+    # Defaults for old checkpoints that don't store architecture config
+    hidden_dim, n_enc_layers, n_dec_layers, noise_dim = 256, 3, 3, 32
     if ckpt_path and Path(ckpt_path).exists():
         ckpt = torch.load(ckpt_path, map_location=device)
-        model.load_state_dict(ckpt["model_state"])
+        state = ckpt["model_state"]
         cfg = ckpt.get("config", {})
+        # Read architecture from saved config (preferred)
+        hidden_dim = cfg.get("hidden_dim", hidden_dim)
+        n_enc_layers = cfg.get("n_enc_layers", n_enc_layers)
+        n_dec_layers = cfg.get("n_dec_layers", n_dec_layers)
+        noise_dim = cfg.get("noise_dim", noise_dim)
         if "kappa" in cfg and cfg["kappa"] > 0:
             gamma = cfg.get("gamma_mut", 1.0)
             theta = round(2 * gamma / cfg["kappa"], 2)
-        print(f"Loaded checkpoint: {ckpt_path}  (theta={theta})")
+        model = MerfishDenoiser(G=G, hidden_dim=hidden_dim, n_enc_layers=n_enc_layers,
+                                n_dec_layers=n_dec_layers, noise_dim=noise_dim,
+                                use_coords=use_coords).to(device)
+        model.load_state_dict(state)
+        print(f"Loaded checkpoint: {ckpt_path}  (theta={theta}, hidden={hidden_dim}, enc={n_enc_layers}, dec={n_dec_layers})")
     else:
+        model = MerfishDenoiser(G=G, hidden_dim=hidden_dim, n_enc_layers=n_enc_layers,
+                                n_dec_layers=n_dec_layers, noise_dim=noise_dim,
+                                use_coords=use_coords).to(device)
         print(f"WARNING: Checkpoint not found: {ckpt_path}. Model will be random.")
     model.eval()
     return model, theta, cfg
@@ -45,6 +58,7 @@ def plot_spatial_comparison_full_traj(
     output_path: str = "outputs/merfish_comparison_stochastic.png",
     gene_indices: list = None,
     spot_idx: int = 60,
+    no_cb: bool = False,
 ):
     print("Loading data...")
     data = np.load(data_path, allow_pickle=True)
@@ -68,7 +82,10 @@ def plot_spatial_comparison_full_traj(
 
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     model_moran, theta, cfg = _load_model(moran_ckpt, G, device)
-    model_cb, _, _ = _load_model(cb_ckpt, G, device, use_coords=False) if cb_ckpt else (None, None, {})
+    if not no_cb and cb_ckpt:
+        model_cb, _, _ = _load_model(cb_ckpt, G, device, use_coords=True)
+    else:
+        model_cb = None
 
     gamma_mut = cfg.get("gamma_mut", 1.0)
     kappa = cfg.get("kappa", 0.5)
@@ -96,7 +113,7 @@ def plot_spatial_comparison_full_traj(
         moran_out = e_step(model_moran, fwd, rev, batch, device, n_denoise_steps=10, ref_counts=all_counts)
         x_hat_moran = moran_out["x_0"][0][:N].cpu().numpy()
 
-    if model_cb is not None:
+    if model_cb is not None and not no_cb:
         print("Running FULL Count Bridge reverse Skellam trajectory...")
         with torch.no_grad():
             cb_out = e_step(model_cb, cb_fwd, cb_rev, batch, device, n_denoise_steps=10, ref_counts=all_counts)
@@ -110,9 +127,9 @@ def plot_spatial_comparison_full_traj(
     col_titles = ["Ground Truth", "Count Bridge Baseline", f"Moran Stoch (θ={theta})"]
     col_data   = [x_0_gt, x_hat_cb, x_hat_moran]
 
-    fig = plt.figure(figsize=(6 * n_cols, 5 * n_genes), facecolor='#1a1a2e')
+    fig = plt.figure(figsize=(6 * n_cols, 5 * n_genes), facecolor='white')
     gs  = gridspec.GridSpec(n_genes, n_cols, figure=fig, hspace=0.35, wspace=0.15)
-    cmap = 'magma'
+    cmap = 'viridis'
 
     for row, g_idx in enumerate(gene_indices):
         all_vals = np.concatenate([d[:, g_idx] for d in col_data])
@@ -124,21 +141,21 @@ def plot_spatial_comparison_full_traj(
             sc = ax.scatter(
                 coords_gt[:, 0], coords_gt[:, 1],
                 c=dat[:, g_idx], cmap=cmap, s=80,
-                vmin=vmin, vmax=vmax, edgecolors='none', alpha=0.9
+                vmin=vmin, vmax=vmax, edgecolors='black', linewidth=0.3, alpha=0.9
             )
             if row == 0:
-                ax.set_title(title, fontsize=13, color='white', pad=8, fontweight='bold')
+                ax.set_title(title, fontsize=13, color='black', pad=8, fontweight='bold')
             if col == 0:
                 ax.set_ylabel(f"Gene {g_idx}\n(var={x_0_gt[:, g_idx].var():.1f})",
-                              color='white', fontsize=10)
-            ax.set_facecolor('#0d0d1a')
-            ax.tick_params(colors='white')
+                              color='black', fontsize=10)
+            ax.set_facecolor('white')
+            ax.tick_params(colors='black')
             for spine in ax.spines.values():
-                spine.set_edgecolor('#444')
-            plt.colorbar(sc, ax=ax, fraction=0.04, pad=0.03).ax.tick_params(colors='white')
+                spine.set_edgecolor('#ccc')
+            plt.colorbar(sc, ax=ax, fraction=0.04, pad=0.03).ax.tick_params(colors='black')
 
     title_str = f"MERFISH Spatial Deconvolution — Spot {spot_idx} (Full Stochastic Chain)"
-    fig.suptitle(title_str, fontsize=15, color='white', y=1.01, fontweight='bold')
+    fig.suptitle(title_str, fontsize=15, color='black', y=1.01, fontweight='bold')
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=180, bbox_inches='tight', facecolor=fig.get_facecolor())
@@ -151,9 +168,14 @@ if __name__ == "__main__":
     parser.add_argument("--moran-ckpt", required=True)
     parser.add_argument("--cb-ckpt", required=False, default="outputs/merfish_cb_run/checkpoints/epoch_020.pt")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--spot-idx", type=int, default=60, help="Tissue spot geometry layout to plot.")
+    parser.add_argument("--no-cb", action="store_true",
+                        help="Skip Count Bridge baseline (useful when no valid CB checkpoint exists)")
     args = parser.parse_args()
     plot_spatial_comparison_full_traj(
         moran_ckpt=args.moran_ckpt,
         cb_ckpt=args.cb_ckpt,
-        output_path=args.output
+        output_path=args.output,
+        spot_idx=args.spot_idx,
+        no_cb=args.no_cb,
     )

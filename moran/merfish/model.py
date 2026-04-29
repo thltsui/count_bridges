@@ -203,17 +203,18 @@ class MerfishDenoiser(nn.Module):
         t_sq = (t ** 2).sum(-1, keepdim=True)          # [B, N, 1]
         cross = torch.bmm(p, t.transpose(1, 2))        # [B, N, N]
         dist_sq = p_sq + t_sq.transpose(1, 2) - 2 * cross
-        dist = dist_sq.clamp(min=1e-8).sqrt()             # [B, N, N]
+        dist = dist_sq.clamp(min=0)  # True L^2 squared Chamfer (no sqrt)
 
         # mask out padded rows/cols
         mask_f = mask.float()  # [B, N]
         row_mask = mask_f.unsqueeze(2)   # [B, N, 1]
         col_mask = mask_f.unsqueeze(1)   # [B, 1, N]
-        large = 1e6
+        large = 1e12  # squared domain needs larger mask
         dist_masked = dist + (1 - row_mask) * large + (1 - col_mask) * large
 
         # min over target per prediction
-        min_pred_to_tgt = dist_masked.min(dim=2)[0]  # [B, N]
+        min_p2t_vals, min_p2t_idx = dist_masked.min(dim=2)  # [B, N]
+        min_pred_to_tgt = min_p2t_vals
         # min over prediction per target
         min_tgt_to_pred = dist_masked.min(dim=1)[0]  # [B, N]
 
@@ -223,12 +224,25 @@ class MerfishDenoiser(nn.Module):
         chamfer_t2p = (min_tgt_to_pred * mask_f).sum(dim=1) / n_real   # [B]
         chamfer_loss = (chamfer_p2t + chamfer_t2p).mean() / 2.0
 
+        # --- Option B: Zero-Match Penalty ---
+        # Get the corresponding matched target cell profile for each predicted cell
+        idx_expanded = min_p2t_idx.unsqueeze(-1).expand(-1, -1, G)
+        matched_target = torch.gather(target, dim=1, index=idx_expanded)
+        
+        # Find genes where the biological target is exactly 0
+        zero_mask = (matched_target == 0.0).float()
+        
+        # Mean prediction value specifically on structural zeros
+        # mask_f ensures we only compute over valid cells
+        zero_error = (pred * zero_mask * mask_f.unsqueeze(-1)).sum() / (mask_f.sum() * G + 1e-8)
+        lambda_zero = 5.0  # Scalar parameter to heavily discourage smearing
+
         # --- 2. Aggregation consistency ---
         # pred_sum = Σ_i pred_i  [B, G]
         pred_sum = (pred * mask_f.unsqueeze(-1)).sum(dim=1)
         agg_loss = F.mse_loss(pred_sum, X_0.float()) / (G + 1e-6)
 
-        return chamfer_loss + 0.1 * agg_loss
+        return chamfer_loss + 0.1 * agg_loss + lambda_zero * zero_error
 
 
 def ipf_rescale(

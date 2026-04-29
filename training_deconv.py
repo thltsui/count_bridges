@@ -60,7 +60,7 @@ def sparse_aggregation_collate_fn(batch: List[Dict[str, Any]], max_batch_size: O
             print(f"Warning: Dropped {dropped} group(s) exceeding max_batch_size={max_batch_size}")
         
         if not valid_items:
-            return [], []
+            return 0, [], []
         
         items, sizes = zip(*valid_items)
         
@@ -160,6 +160,9 @@ def sparse_aggregation_collate_fn(batch: List[Dict[str, Any]], max_batch_size: O
         indices, values, (batch_size, total_samples), dtype=torch.float32
     ).coalesce()
     
+    if not batch:
+        return None
+        
     # Add aggregation metadata
     result['A'] = A_sparse.to_dense() # if A_sparse.shape[0] == 1 else A_sparse
     result['group_sizes'] = torch.tensor(group_sizes, dtype=torch.long)
@@ -195,7 +198,7 @@ def deconv_sample_batch(
         # across modalities 
         context_x_0 = {}
         for k in batch['x_0']:
-            if k not in batch['X_0']:
+            if not isinstance(batch['X_0'], dict) or k not in batch['X_0']:
                 context_x_0[k] = batch['x_0'][k].to(device)
 
         context['x_0'] = context_x_0
@@ -243,13 +246,14 @@ class DeconvTrainer(Trainer):
 
     def _create_dataloader(self, dataset):
         """Create DataLoader from dataset with custom sparse aggregation collate function"""
+        from functools import partial
         return DataLoader(
             dataset,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             pin_memory=torch.cuda.is_available(),
-            collate_fn=lambda x: sparse_aggregation_collate_fn(x, self.max_batch_size)
+            collate_fn=partial(sparse_aggregation_collate_fn, max_batch_size=self.max_batch_size)
         )
 
     def training_step(self, model: torch.nn.Module, bridge: Any, batch: Dict[str, torch.Tensor], avg_model: Optional[torch.optim.swa_utils.AveragedModel] = None) -> float:
@@ -321,6 +325,8 @@ class DeconvTrainer(Trainer):
         else:
             tqdm = dataloader
         for batch in tqdm:
+            if batch is None:
+                continue
             # extract x_1 in multimodal and single modality cases
             if not self.direct_only:
                 model.eval()

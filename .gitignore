@@ -8,6 +8,7 @@ data/*.fa
 
 # Raw data
 data/merfish/
+MERFISH_Dataset/
 
 # GPU-only bridge (requires cupy, not available on macOS/MPS)
 bridges/cupy/

@@ -38,7 +38,7 @@ class SkellamBridge:
     def __call__(self, x_0, x_1, t_target=None):
         x_0, x_1 = dlpack_backend(x_0, x_1, backend='numpy', dtype="int32")
 
-        b, d = x_0.shape
+        b = x_0.shape[0]
 
         diff = (x_1 - x_0)
         M = self.slack_sampler(diff)
@@ -93,6 +93,7 @@ class SkellamBridge:
         guidance_x_0:      np.ndarray = None,
         guidance_schedule: np.ndarray = None,
     ):
+
         b, d    = x_1.shape
         x_1 = x_t = dlpack_backend(x_1.round(), backend='numpy', dtype="int32")
 
@@ -112,6 +113,10 @@ class SkellamBridge:
             else:
                 x_t_dl, t_dl = dlpack_backend(x_t, t, backend=self.backend, dtype="float32", device=self.device)
                 model_out = model.sample(x_t=x_t_dl, t=t_dl, **z)
+            
+            if isinstance(model_out, dict):
+                model_out = model_out["counts"]
+                
             x0_hat_t = dlpack_backend(model_out, backend='numpy', dtype="float32") + x_t if self.delta else dlpack_backend(model_out, backend='numpy', dtype="float32")
 
             if guidance_x_0 is not None:

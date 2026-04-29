@@ -2,7 +2,7 @@
 _target_: architecture.uvit_multimodal.MultimodalUViT
 
 # Image parameters
-img_size: 256
+img_size: 16
 patch_size: 16
 in_chans: 1
 
