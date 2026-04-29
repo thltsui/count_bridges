@@ -106,30 +106,48 @@ Let the joint state of $N$ cells at time $t \in [0,1]$ be $X(t) = (x^{(1)}(t), \
 \paragraph{Mutation (immigration--death).}
 Each cell $i$ independently undergoes per-gene birth--death:
 \[
-  x_j^{(i)} \;\xrightarrow{\;\beta\;}\; x_j^{(i)} + 1, \qquad
-  x_j^{(i)} \;\xrightarrow{\;\mu\, x_j^{(i)}\;}\; x_j^{(i)} - 1.
+  x_g^{(i)} \;\xrightarrow{\;\gamma_{\text{mut}}\lambda(t)\;}\ x_g^{(i)} + 1, \qquad
+  x_g^{(i)} \;\xrightarrow{\;\gamma_{\text{mut}}\lambda(t)\, x_g^{(i)}\;}\ x_g^{(i)} - 1,
 \]
-With the time scaling $\lambda(t) = 1/(1-t)^2$, the integrated mutation parameter at time $t$ is $S(t) = 1/(1-t) - 1$, and the per-gene marginal converges to $\text{Poisson}(\beta/\mu)$ as $t \to 1$.
+for each gene $g \in \{1,\ldots,G\}$. With the time scaling $\lambda(t) = 1/(1-t)^2$, the per-gene marginal converges to $\text{Poisson}(1)$ as $t \to 1$. In the $\tau$-leaping discretisation, births are drawn as $\text{Poisson}(\gamma_{\text{mut}}\lambda(t)\Delta t)$ and deaths via Binomial thinning of surviving molecules.
 
-\paragraph{Resampling (Moran interaction).}
-Cell $i$ copies cell $j$'s profile at rate
+\paragraph{Gene-level Moran resampling.}
+Classical Moran resampling copies an entire cell profile $x^{(j)} \to x^{(i)}$. We instead perform \emph{per-gene} lateral transfer, which avoids catastrophic identity-cloning whilst preserving spatial coupling across cells.
+
+In each $\tau$-leaping step of duration $\Delta t$, for each cell $i$, we first compute the aggregate resampling probability:
+\begin{equation}
+  p_{\text{resamp}}^{(i)}(t) = \min\!\Bigl(\frac{\kappa\,\lambda(t)}{N}\sum_{j \neq i} K(p_i, p_j)\,\Delta t,\; 0.9\Bigr),
+  \label{eq:presamp}
+\end{equation}
+where $K(p_i, p_j) = \exp\!\bigl(-\|p_i - p_j\|^2 / 2h^2\bigr)$ is a Gaussian spatial kernel with bandwidth $h = 20\,\mu$m. Each gene $g$ is then independently included in the replacement set via a Bernoulli draw:
 \[
-  q_{ij}(t) = \frac{\kappa}{N}\, K(p_i, p_j)\, \lambda(t),
-  \qquad K(p_i, p_j) = \exp\!\Bigl(-\frac{\|p_i - p_j\|^2}{2\,h^2}\Bigr),
+  m_g^{(i)} \sim \text{Bernoulli}\bigl(p_{\text{resamp}}^{(i)}(t)\bigr).
 \]
-with kernel bandwidth $h = 20\,\mu$m. In practice, we implement \emph{gene-level resampling}: each gene is independently replaced via a Bernoulli mask, preventing catastrophic identity-cloning while preserving spatial coupling.
+For each gene $g$ with $m_g^{(i)} = 1$, the source cell is sampled \emph{independently}:
+\[
+  s_g^{(i)} \sim \text{Categorical}\!\Bigl(\frac{K(p_i, p_1)}{\sum_{j} K(p_i,p_j)}, \ldots, \frac{K(p_i, p_N)}{\sum_{j} K(p_i,p_j)}\Bigr),
+\]
+and the replacement is applied gene-by-gene:
+\begin{equation}
+  x_g^{(i)} \;\leftarrow\; x_g^{(s_g^{(i)})}\quad \text{if } m_g^{(i)} = 1.
+  \label{eq:geneswap}
+\end{equation}
+This means each replaced gene copies the count of that \emph{same gene} from a spatially selected donor, rather than copying the donor's full transcriptomic identity. The result is a gene-expression diffusion that locally homogenises individual transcripts while permitting each gene programme to evolve under its own spatial neighbourhood.
 
 \paragraph{Full generator.}
+The combined infinitesimal generator acting on test functions $f: (\mathbb{Z}_{\geq 0}^G)^N \to \mathbb{R}$ is:
 \begin{align}
   \mathcal{A} f(X)
-  &= \underbrace{\sum_{i=1}^{N}\sum_{j=1}^{G}\Bigl[
-        \gamma_{\text{mut}}\lambda(t)\bigl(f(X^{i,j+}) - f(X)\bigr)
-        + \gamma_{\text{mut}}\lambda(t)\, x_j^{(i)}\bigl(f(X^{i,j-}) - f(X)\bigr)
+  &= \underbrace{\sum_{i=1}^{N}\sum_{g=1}^{G}\Bigl[
+        \gamma_{\text{mut}}\lambda(t)\bigl(f(X^{i,g+}) - f(X)\bigr)
+        + \gamma_{\text{mut}}\lambda(t)\, x_g^{(i)}\bigl(f(X^{i,g-}) - f(X)\bigr)
      \Bigr]}_{\text{mutation}}
   \notag\\
-  &\quad + \underbrace{\frac{\kappa}{N}\sum_{i \neq j} K(p_i,p_j)\lambda(t)\bigl[f(X^{i \leftarrow j}) - f(X)\bigr]}_{\text{Moran resampling}}.
+  &\quad + \underbrace{\frac{\kappa\,\lambda(t)}{N}\sum_{i=1}^{N}\sum_{j \neq i} K(p_i,p_j)
+      \sum_{g=1}^{G}\bigl[f(X^{i,g \leftarrow j}) - f(X)\bigr]}_{\text{gene-level resampling}},
   \label{eq:generator}
 \end{align}
+where $X^{i,g \leftarrow j}$ denotes the state obtained by replacing only gene $g$ of cell $i$ with the value $x_g^{(j)}$ from donor cell $j$, while leaving all other genes and cells unchanged. This factored structure---one event per (cell, gene, donor) triple---contrasts with the classical Moran generator in which $X^{i \leftarrow j}$ replaces the entire $G$-dimensional profile simultaneously. The factored form also makes the $\tau$-leaping simulation embarrassingly parallelisable over genes.
 
 \subsection{The Dirichlet Process Prior}
 
