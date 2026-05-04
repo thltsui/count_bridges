@@ -1,0 +1,48 @@
+# Moran Bridge on Discrete Moons.
+# Run with: python main.py -cn moran_moons_config
+# Compare against:
+#   python main.py dataset=discrete_moons          (Skellam/Count Bridge)
+#   python main.py -cn cfm_config dataset=discrete_moons  (CFM baseline)
+
+defaults:
+  - bridge: moran
+  - model: energy_score
+  - architecture: mlp
+  - architecture/in_dims: with_noise
+  - architecture/out_dim: scalar
+  - dataset: discrete_moons
+  - training: default
+  - averaging: ema
+  - optimizer: adam_big
+  - scheduler: cosine
+  - slack_sampler: bessel
+  - _self_
+
+architecture:
+  act_fn: softplus
+
+# Moran-specific overrides
+bridge:
+  kappa: 2.0
+  bandwidth: 5.0
+  resample_frac: 0.3
+
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: outputs/moran_moons/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+device: cuda
+seed: 42
+train_split: 0.8
+
+experiment:
+  name: "moran_moons"
+  version: "1.0"
+  description: "Moran bridge on discrete two moons (comparison with Count Bridge)"
+
+logging:
+  level: INFO
+
+create_plots: true

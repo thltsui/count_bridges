@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.special import iv
+from .sampling.bessel import sample_bessel_devroye
 
 class ConstantM:
     def __init__(self, m: int, markov: bool = True):
@@ -27,7 +28,20 @@ class BesselM:
         self.markov = markov
         
     def __call__(self, diff: np.ndarray):
-        lam_p = np.broadcast_to(self.lam_p, diff.shape)
-        lam_m = np.broadcast_to(self.lam_m, diff.shape)
-        
-        return sample_bessel_devroye(lam_p, lam_m, diff)
+        """Sample M element-wise from the Bessel posterior."""
+        flat_d = np.abs(diff).flatten().astype(int)
+        M_flat = np.zeros_like(flat_d)
+        lam_p = float(self.lam_p) if np.ndim(self.lam_p) == 0 else self.lam_p
+        lam_m = float(self.lam_m) if np.ndim(self.lam_m) == 0 else self.lam_m
+
+        # Group by unique |d| values — bessel sampler needs scalar d
+        for d_val in np.unique(flat_d):
+            mask = flat_d == d_val
+            n = int(mask.sum())
+            samples = sample_bessel_devroye(
+                float(lam_p), float(lam_m),
+                int(d_val), n_samples=n
+            )
+            M_flat[mask] = samples
+
+        return M_flat.reshape(diff.shape)

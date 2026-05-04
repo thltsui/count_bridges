@@ -1,22 +1,28 @@
 import torch
 import numpy as np
 from typing import Optional, Iterable
-import cupy as cp
+
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 def dlpack_backend(*args, backend: str = "torch", dtype: Optional = None, device: Optional = None):
     if not isinstance(args, Iterable):
         args = (args,)
     if backend == "torch":
         dtype = torch.float32 if dtype == "float32" else dtype
-        return tuple(torch.from_numpy(a) if dtype is None else torch.from_numpy(a).to(dtype).to(device) for a in args)
+        # For numpy bridge, always use CPU (device=0 would incorrectly map to MPS on Apple Silicon)
+        torch_device = None  # CPU
+        return tuple(torch.from_numpy(a.copy()) if dtype is None else torch.from_numpy(a.copy()).to(dtype) for a in args)
     elif backend == "numpy":
         dtype = np.int32 if dtype == "int32" else dtype
         # if is torch, convert to numpy
         if isinstance(args[0], torch.Tensor):
-            args = tuple(a.cpu().numpy() for a in args)
+            args = tuple(a.detach().cpu().numpy() for a in args)
         elif isinstance(args[0], np.ndarray):
             args = tuple(a.astype(dtype) if dtype is not None else a for a in args)
-        elif isinstance(args[0], cp.ndarray):
+        elif cp is not None and isinstance(args[0], cp.ndarray):
             args = tuple(a.astype(dtype) if dtype is not None else a for a in args)
         else:
             raise ValueError(f"Invalid backend: {backend}")

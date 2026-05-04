@@ -1,0 +1,43 @@
+# Moran Bridge experiment configuration.
+# Run with: python main.py -cn moran_config
+# Or: python main.py -cn moran_config dataset=discrete_moons
+
+defaults:
+  - bridge: moran
+  - model: energy_score
+  - architecture: mlp
+  - architecture/in_dims: with_noise
+  - architecture/out_dim: scalar
+  - dataset: low_rank_gaussian_mixture
+  - training: default
+  - averaging: ema
+  - optimizer: adam_big
+  - scheduler: cosine
+  - slack_sampler: bessel
+  - _self_
+
+architecture:
+  act_fn: softplus
+
+# Hydra configuration
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: outputs/moran/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+# Global settings
+device: cuda
+seed: 42
+train_split: 0.8
+
+# Experiment settings
+experiment:
+  name: "moran_bridge"
+  version: "1.0"
+  description: "Moran bridge: count-native dynamics with spatial resampling"
+
+logging:
+  level: INFO
+
+create_plots: true
