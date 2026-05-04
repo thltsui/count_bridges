@@ -1,0 +1,37 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb, graphicx}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{Generative Moran Bridges:\\ Adjoint Transport Monte Carlo for Resampling Sequences}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+In discrete Generative CTMC Score Matching, the backward generative process seeks to integrate from the noise distribution \(\mu_1^{(N)}\) to the data distribution \(\mu_0^{(N)}\) using empirical transition rates derived via Bayesian reversal. In canonical non-interacting systems (e.g., standard independent Skellam noise), standard \textbf{\(\tau\)-leaping approximation} over discretized timesteps \(\Delta t\) efficiently executes independent continuous-time bounds.
+
+However, the Generative Moran Framework governs a \textit{macroscopic empirical distribution} where particles topologically clone non-locally across arbitrary continuous domains mapped back upon discrete sets \(\mathcal{P}_N(\mathbb{Z}^2)\). In this state space, the continuous forward \textbf{resampling} mechanism functions strictly as a probabilistic branching process (fission). Consequently, strictly reversing this topological mechanism utilizing standard structural \(\tau\)-leaping causes catastrophic density smearing due to the lack of an exact spatial particle conservation mapping over temporal slices over bounds. 
+
+\section{Adjoint Flux Coalescent Transport}
+To strictly satisfy the continuous limits of conditional generative transition pseudo-marginals exactly matching backward density cloning, the reverse interaction mechanism directly models \textbf{Adjoint Monte Carlo Simulation} standardly utilized in strict backward neutron transport physics.
+
+If the forward process permits a state density mapping where particle \(j\) clones conditionally over \(i\), then to enforce detailed balance structurally iteratively, the backward mathematical adjoint mandates \textit{Coalescent Absorption}. Particle \(i\) must intrinsically collapse its geometric coordinates explicitly coalescing to the continuous geometric coordinate bounds representing its sampled empirical source node \(j\).
+
+\subsection{Reverse Coalescent Transition Matrix Formulation}
+For any particle \(i \in \{1 \dots N\}\), evaluating the stochastic bound limiting jumping coordinates into the physical topology of particle \(j\) leverages a cross-coupled macroscopic rate matrix structurally evaluating symmetric mapping probabilities:
+
+\[
+R(x_i \to x_j) = \frac{\kappa_{eff}}{N} \cdot K_\sigma(x_i, x_j) \cdot \left(\frac{P_{\text{target}}(x_j)}{P_{\text{target}}(x_i)}\right)^\omega
+\]
+
+Where components govern distinctly tracking limits:
+\begin{itemize}
+    \item \textbf{\(K_\sigma(x_i, x_j)\)}: The forward spatial constraint probability mapping density mapping bounding the physical Toroidal distribution separating empirical bounds.
+    \item \textbf{\(\left(\frac{P_{\text{target}}(x_j)}{P_{\text{target}}(x_i)}\right)^\omega\)}: The \textbf{Adjoint Importance Ratio Flux}, establishing exactly the structural advantage weighting pulling random coordinates into dense distribution states cleanly conditionally targeting the continuous limit. This essentially serves as the topological response bounds defined rigorously via Bayes' matching mathematically.
+\end{itemize}
+
+By summing \(\sum_{j \ne i} R(x_i \to x_j)\), we perfectly formulate strict stochastic leaping structurally forcing unguided geometries efficiently back into their cleanly clustered mathematical bounds inherently solving empirical generative distributions without deterministic zeroing boundaries.
+\end{document}

@@ -1,0 +1,304 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Moran Model for MERFISH Spatial Deconvolution:\\A Research Plan}
+\author{Ho Lung Tsui}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+%% ==================================================================
+\section{The Spatial Deconvolution Task}
+%% ==================================================================
+
+MERFISH (Vizgen) provides single-cell resolution gene expression with spatial coordinates. However, many spatial transcriptomics platforms (e.g.\ Visium) only measure \emph{bulk} expression at each spatial spot---the sum across all cells at that location. \textbf{Spatial deconvolution} is the inverse problem: given the bulk measurement plus morphological side-information, recover the individual cell profiles.
+
+\subsection{Precise Problem Statement}
+
+\paragraph{Input (observed at test time).}
+\begin{itemize}
+  \item Bulk gene expression at a tissue spot: $X_0 \in \mathbb{Z}_{\geq 0}^{649}$, the sum of all cells' counts.
+  \item DAPI nuclear images for each cell in the spot: $I_1, \ldots, I_N$, each $256 \times 256$ grayscale.
+  \item The number of cells $N$ in the spot (known from nuclear segmentation).
+\end{itemize}
+
+\paragraph{Output (generated).}
+\begin{itemize}
+  \item Per-cell gene expression profiles: $\hat{x}_0^{(1)}, \ldots, \hat{x}_0^{(N)} \in \mathbb{Z}_{\geq 0}^{649}$.
+\end{itemize}
+
+\paragraph{Hard constraint.}
+\[
+  \sum_{i=1}^N \hat{x}_0^{(i)} = X_0.
+\]
+The generated cell profiles must sum exactly to the observed bulk measurement. This is enforced via IPF (iterative proportional fitting) rescaling followed by randomised rounding.
+
+\paragraph{Why DAPI helps.} Nuclear morphology (size, shape, texture) correlates with cell type. The model uses each cell's DAPI image to infer its likely cell type, then assigns expression profiles accordingly---subject to the sum constraint.
+
+\subsection{Evaluation (Against MERFISH Ground Truth)}
+
+Since MERFISH provides the true single-cell profiles, we can evaluate directly:
+\begin{enumerate}
+  \item \textbf{Distributional metrics} (per spot): energy distance, sliced Wasserstein (100 projections), MMD with RBF kernel, MSE---comparing predicted vs.\ true cell profiles.
+  \item \textbf{Cell type proportions}: Leiden clustering on the reference data at various resolutions (5, 10, 15, 20, 25, 30, 35 clusters). Labels are transferred to predicted cells via $k$-NN in PCA space. The cell type proportion (CTP) matrix per spot is compared.
+  \item \textbf{Statistical moments}: mean, variance, skewness, kurtosis errors per gene; covariance Frobenius norm.
+\end{enumerate}
+
+Our Moran model must be evaluated with \textbf{exactly these metrics}, on \textbf{exactly this data}, to enable a direct comparison with Count Bridges.
+
+%% ==================================================================
+\section{How Count Bridges Solves This Task}
+%% ==================================================================
+
+\subsection{The Skellam Bridge: Per-Cell, Per-Gene, Independent}
+
+Count Bridges treats each cell's each gene dimension as an \emph{independent} 1D birth-death bridge. For cell $i$, gene $j$:
+\[
+  x_t^{(i,j)} = x_0^{(i,j)} + B_t^{(i,j)} - D_t^{(i,j)},
+\]
+where $(B_t, D_t)$ are drawn from the bridge conditional $P(x_t \mid x_0, x_1)$, which has exact closed-form sampling via Binomial $+$ Hypergeometric $+$ Bessel slack. The source is i.i.d.\ noise: $x_1^{(i)} \sim |\mathcal{N}(0, 10)|$.
+
+\textbf{There is no interaction between cells.} Cell $i$ and cell $j$ at the same spot are bridged completely independently. The only inter-cell coupling is the aggregation constraint, enforced post-hoc.
+
+\subsection{Architecture: MultimodalUViT}
+
+Each cell is processed independently by a 10-layer Vision Transformer (768-dim, 12 heads):
+\begin{itemize}
+  \item DAPI image $I_i$ ($256 \times 256$) $\to$ 256 patch embeddings via ViT patch embedding.
+  \item Count vector $x_t^{(i)}$ (649-dim) $\to$ 4 patch embeddings via learned linear projection.
+  \item Time token $+$ noise token $+$ 256 image patches $+$ 4 count patches $= 262$ tokens total.
+  \item Output: predicted count vector $\hat{x}_0^{(i)} \in \mathbb{R}_{\geq 0}^{649}$ (Softplus ensures non-negativity).
+\end{itemize}
+
+The model sees one cell at a time. It cannot see other cells in the same spot.
+
+\subsection{Training: E-M Loop}
+
+Each epoch alternates two steps:
+\begin{enumerate}
+  \item \textbf{E-step} (inference): Sample $x_0$ from the current model via the reverse Skellam bridge, conditioned on $X_0$ via IPF rescaling. This produces ``pseudo-ground-truth'' cell profiles that are consistent with the bulk measurement.
+  \item \textbf{M-step} (training): Train on $(x_0^{\text{inferred}}, x_1)$ pairs. The Skellam bridge produces intermediate states $(t, x_t, x_0)$. The energy score loss is computed at the \emph{group level} after aggregating cell predictions via the sparse matrix $A$:
+  \[
+    \mathcal{L} = \text{EnergyScore}\!\bigl(A \hat{x}_0,\; X_0\bigr),
+  \]
+  where $A \in \{0,1\}^{G \times C}$ maps cells to spots: $A_{g,c} = 1$ iff cell $c \in$ spot $g$.
+\end{enumerate}
+
+\subsection{Generation (Inference)}
+
+At test time:
+\begin{enumerate}
+  \item Start from noise: $x_1^{(i)} \sim |\mathcal{N}(0, 10)|$ for each cell.
+  \item Reverse through the Skellam bridge: at each step $k$, the model predicts $\hat{x}_0^{(i)}$ from $(x_t^{(i)}, t, I_i)$, then the bridge conditional gives $x_{t-1}^{(i)}$.
+  \item At $t = 0$: apply IPF rescaling and randomised rounding to enforce $\sum_i \hat{x}_0^{(i)} = X_0$ exactly.
+\end{enumerate}
+
+Each cell is generated independently. The sum constraint is the only coordination.
+
+\subsection{What This Means}
+
+Two adjacent cells at the same spot---even if they are clearly the same cell type based on their nuclear morphology---receive \emph{completely independent} noise trajectories and model predictions. The only thing preventing wildly inconsistent profiles is the post-hoc IPF projection, which is a hard algebraic constraint, not a learned generative mechanism.
+
+%% ==================================================================
+\section{Count Bridges Benchmark Results on MERFISH}
+%% ==================================================================
+
+The evaluation compares three quantities per spot:
+\begin{itemize}
+  \item \textbf{Pred vs True}: Generated cell profiles vs.\ MERFISH ground truth. This is the primary metric---how accurate is the deconvolution?
+  \item \textbf{Pred vs Spot Mean}: Generated profiles vs.\ the naive baseline of assigning every cell the spot mean $\bar{x}_0 = X_0 / N$. Measures whether the model captures \emph{any} cell-to-cell variability.
+  \item \textbf{True vs Spot Mean}: True single-cell profiles vs.\ their own spot mean. This is the inherent biological variability---an oracle ceiling. No method can do better than the true cells against their own mean.
+\end{itemize}
+
+\subsection{Results: S1R1 (4{,}358 spots, 73{,}613 cells)}
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Metric & Pred vs True & Pred vs Spot Mean & True vs Spot Mean \\
+\midrule
+Energy distance    & 8.891  & 42.903 & 41.717 \\
+Sliced Wasserstein & 0.017  & 0.034  & 0.030 \\
+MMD (RBF)          & 0.203  & 0.419  & 0.409 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Interpretation}
+
+\begin{enumerate}
+  \item \textbf{The model works well}: Pred vs True (8.9 energy distance) is much smaller than the inherent variability (41.7), meaning generated profiles are substantially closer to truth than to the naive spot-mean baseline.
+
+  \item \textbf{Variability is captured}: Pred vs Spot Mean ($\approx 42.9$) is close to True vs Spot Mean ($\approx 41.7$), indicating Count Bridges produces roughly the correct \emph{amount} of cell-to-cell variability. The model does not under- or over-disperse relative to the data.
+
+  \item \textbf{This is the target to beat}. Our Moran model must be evaluated with \emph{exactly} this three-way comparison on the same S1R1 data. If Moran's inter-cell coupling improves deconvolution, we should see Pred vs True decrease (closer to ground truth) while Pred vs Spot Mean remains close to True vs Spot Mean (preserving correct variability).
+\end{enumerate}
+
+\subsection{Additional Evaluation: Cell Type Proportions}
+
+Beyond distributional metrics, Count Bridges evaluates cell type recovery:
+\begin{enumerate}
+  \item Leiden clustering on reference data at various resolutions (5, 10, 15, 20, 25, 30, 35 clusters).
+  \item Labels transferred to predicted cells via $k$-NN ($k = 15$) in PCA space.
+  \item Cell type proportion (CTP) matrix compared per spot: does the model assign the right mix of cell types?
+\end{enumerate}
+
+This is where the Moran model's DP prior (which naturally clusters cells into types) may provide an advantage over Count Bridges' independent generation.
+
+%% ==================================================================
+\section{What the Moran Model Changes}
+%% ==================================================================
+
+\subsection{Core Idea}
+
+Instead of generating each cell independently, the Moran model generates all $N$ cells in a spot \emph{jointly}. Cells that are similar (spatially proximate, morphologically alike) influence each other through the resampling mechanism, producing correlated expression profiles as a mathematical consequence of the population dynamics.
+
+\subsection{Framework}
+
+The cells within each tissue spot form a Moran population:
+\begin{itemize}
+  \item \textbf{Individuals}: cells $\{1, \ldots, N\}$ within a spot.
+  \item \textbf{Type of individual $i$}: gene expression profile $x^{(i)} \in \mathbb{Z}_{\geq 0}^{649}$.
+  \item \textbf{Mutation}: per-gene immigration-death. Gene $j$ in cell $i$ has immigration rate $\beta$ and per-molecule death rate $\mu$, giving stationary distribution $\text{Poisson}(\beta/\mu)$ per gene.
+  \item \textbf{Resampling}: cell $i$ copies cell $j$'s \emph{entire} 649-dim expression profile, at rate $\frac{\kappa}{N} K(i, j)$.
+\end{itemize}
+
+The generator of the Moran CTMC on the joint state $(x^{(1)}, \ldots, x^{(N)})$:
+\begin{align}
+  \mathcal{A}f &= \underbrace{\sum_{i=1}^N \mathcal{A}_{\text{mut}}^{(i)} f}_{\text{per-cell mutation}} + \underbrace{\frac{\kappa}{N} \sum_{i \neq j} K(i,j) \bigl[f(x^{i \leftarrow j}) - f(x)\bigr]}_{\text{Moran resampling}}.
+\end{align}
+
+\subsection{Choice of Kernel}
+
+The resampling kernel $K(i,j)$ determines which cells influence each other. Three options, in order of preference:
+
+\paragraph{Option A: Spatial kernel (recommended --- coordinates available!).}
+$K(i, j) = \exp\!\bigl(-\|p_i - p_j\|^2 / 2h^2\bigr)$,
+where $p_i = (\texttt{x\_um}_i, \texttt{y\_um}_i)$ are cell centroids in micrometres, available in the \texttt{S1R1.npz} files. Biologically motivated: spatial proximity implies shared lineage and microenvironment. This is the most natural choice and can be used immediately.
+
+\paragraph{Option B: Uniform kernel within spot (simplest baseline).}
+$K(i,j) = 1$ for all cells in the same spot. All cells are equally coupled. Useful for ablation: does the spatial structure of the kernel matter, or is any coupling sufficient?
+
+\paragraph{Option C: UMAP/PCA kernel from reference expression.}
+$K(i,j) = \exp\!\bigl(-\|u_i - u_j\|^2 / 2h^2\bigr)$,
+where $u_i$ is the PCA or UMAP coordinate of cell $i$, computed from the \emph{reference} expression data. This captures transcriptomic similarity directly. The kernel is precomputed from ground truth and fixed during training, avoiding the chicken-and-egg problem of state-dependent rates.
+
+\paragraph{Data availability.} The \texttt{S1R1.npz} files contain more fields than the dataset loader uses:
+\begin{center}
+\texttt{imgs, counts, spots, x\_um, y\_um, annotations, visium\_simulated, cell\_type\_counts, n\_cells}
+\end{center}
+\textbf{Spatial coordinates are available}: \texttt{x\_um} and \texttt{y\_um} give cell centroid positions in micrometres. The dataset loader (\texttt{merfish\_deconv.py}) only reads \texttt{imgs}, \texttt{counts}, and \texttt{spots}---it ignores the spatial coordinates entirely. This means a proper spatial kernel is immediately available without needing the raw Vizgen data.
+
+\subsection{De Finetti Equilibrium as Prior}
+
+With time scaling $s = 1/(1-t)$, the Moran process converges to its de Finetti equilibrium at $t = 1$:
+\[
+  \mu_N \;\xrightarrow{N \to \infty}\; \text{DP}(\theta, \nu),
+\]
+where $\theta = 2\gamma_{\text{mut}}/\kappa$ and $\nu$ is the stationary distribution of the per-cell mutation on $\mathbb{Z}_{\geq 0}^{649}$.
+
+The DP prior \emph{naturally produces cell type clusters}: atoms of the DP are distinct expression profiles (cell types), shared by groups of cells, with $\theta$ controlling the expected number of distinct types. Compare this to Count Bridges' source $x_1^{(i)} \sim |\mathcal{N}(0, 10)|$ i.i.d., which has no type structure whatsoever.
+
+\subsection{What Moran Provides That Count Bridges Does Not}
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Property & Count Bridges & Moran \\
+\midrule
+Cell generation & Independent per cell & Joint (all cells in spot) \\
+Inter-cell coupling & None (only IPF post-hoc) & Resampling during generation \\
+Prior structure & i.i.d.\ noise & DP clusters (cell types) \\
+Spatial coherence & Only via DAPI images & Explicit spatial/similarity kernel \\
+Aggregation & Hard constraint only & Soft coupling $+$ hard constraint \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The central prediction: Moran should produce more \emph{internally consistent} cell populations per spot, where cells of the same type receive correlated expression profiles through the generative process itself, rather than relying solely on IPF projection.
+
+%% ==================================================================
+\section{Implementation Plan}
+%% ==================================================================
+
+\subsection{Phase 1: Two Moons $N$-Sweep (Proof of Concept)}
+
+Validate the Moran particle framework on the discrete two moons dataset, using the same data and metrics as Count Bridges (value\_range $= 196$, MMD, Wasserstein, coverage, off-support).
+
+The 50,000 data points are partitioned into populations of size $N$:
+\begin{center}
+\begin{tabular}{ccl}
+\toprule
+$N$ & Training populations & Note \\
+\midrule
+1 & 50,000 & Count Bridges limit ($\kappa = 0$) \\
+10 & 5,000 & Light coupling \\
+50 & 1,000 & Moderate coupling \\
+100 & 500 & Strong coupling \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Sweep over $N$ and $\theta$. The model is a permutation-equivariant DeepSets denoiser with energy score loss. Implemented in \texttt{moran/experiment.py}.
+
+\subsection{Phase 2: MERFISH Data Exploration}
+
+The \texttt{S1R1.npz} file contains all needed fields. Key exploration tasks:
+\begin{enumerate}
+  \item Distribution of cells per spot (min, max, mean, histogram). From the notebooks: ${\sim}73{,}613$ cells across 4{,}358 spots in S1R1 (average ${\sim}17$).
+  \item \textbf{Spatial structure within spots}: plot \texttt{x\_um}, \texttt{y\_um} for cells within individual spots. How clustered are they? What is the typical inter-cell distance? This determines the kernel bandwidth $h$.
+  \item Gene expression structure: PCA spectrum, Leiden clustering at various resolutions (notebooks show 5--35 clusters). This calibrates $\theta$.
+  \item Spot-to-spot variability: how heterogeneous are spots in cell type composition?
+\end{enumerate}
+
+\subsection{Phase 3: Moran Forward Process for 649-Dim Counts}
+
+Implement the Moran CTMC for gene expression vectors:
+\begin{itemize}
+  \item \textbf{Mutation}: per-gene immigration-death with rates calibrated to match data statistics.
+  \item \textbf{Resampling}: cell $i$ copies cell $j$'s entire 649-dim profile, weighted by kernel $K$.
+  \item \textbf{Time scaling}: rates $\times\, 1/(1-t)^2$ to guarantee convergence to de Finetti.
+  \item \textbf{Tau-leaping}: approximate simulation with ${\sim}30$ substeps per unit time.
+\end{itemize}
+
+\subsection{Phase 4: Architecture Adaptation}
+
+Wrap the existing MultimodalUViT in a DeepSets framework:
+\begin{enumerate}
+  \item Per-cell UViT encoder (reuse existing architecture, including DAPI image processing).
+  \item Mean-pool cell embeddings across the spot $\to$ global context vector.
+  \item Per-cell decoder conditioned on global context.
+\end{enumerate}
+
+This adds inter-cell awareness with minimal modification to the existing architecture.
+
+\subsection{Phase 5: Training and Evaluation}
+
+\begin{itemize}
+  \item Replace the Skellam bridge with the Moran forward/reverse in both E-step and M-step. Keep the E-M structure.
+  \item Keep the aggregation constraint ($\sum_i \hat{x}_0^{(i)} = X_0$) and IPF rescaling.
+  \item Evaluate with \textbf{exactly the same metrics} as Count Bridges: energy distance, Wasserstein, MMD, cell type proportions, moment errors.
+  \item Additional Moran-specific analysis: do the DP clusters from the prior correspond to biologically meaningful cell types?
+\end{itemize}
+
+%% ==================================================================
+\section{Key Open Questions}
+%% ==================================================================
+
+\begin{enumerate}
+  \item \textbf{Does inter-cell coupling help?} The DAPI images already provide per-cell morphological information. The Moran coupling adds transcriptomic coherence among similar cells---is this redundant, or does it provide signal beyond what DAPI captures?
+
+  \item \textbf{Optimal $\theta$?} Too small $\to$ all cells collapse to one type. Too large $\to$ no coupling (recovers Count Bridges). The biological expectation is ${\sim}5$--$20$ cell types per spot; $\theta$ should be calibrated accordingly.
+
+  \item \textbf{Aggregation constraint interaction.} The DP prior naturally partitions cells into types. Does this make the IPF rescaling smoother (less disruptive) compared to Count Bridges' independent prior, where IPF must do all the coordination?
+
+  \item \textbf{Computational cost.} The Moran forward is $O(N^2)$ per substep per spot (kernel computation). With $N \sim 18$ cells per spot, this is ${\sim}324$ kernel evaluations---cheap. The bottleneck is the 649-dimensional state space, not the population size.
+
+  \item \textbf{Variable $N$ per spot.} Different spots have 3--50+ cells. The DeepSets architecture handles variable input sizes naturally. The sparse aggregation collation already manages this in Count Bridges.
+\end{enumerate}
+
+\end{document}

@@ -1,9 +1,10 @@
 # Skellam Bridge Configuration
-_target_: bridges.cupy.skellam.SkellamBridge
+_target_: bridges.numpy.skellam.SkellamBridge
 
 # Bridge parameters
 schedule_type: "linear"
 homogeneous_time: false
+n_steps: 10
 
 # Slack sampler configuration
 slack_sampler: ${slack_sampler}

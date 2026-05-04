@@ -67,9 +67,10 @@ class ParticleMoranForward:
         return 1.0 / (max(1.0 - t, 0.001) ** 2)
 
     def _kernel(self, x: np.ndarray) -> np.ndarray:
-        """Pairwise RBF kernel. x: [N, 2] -> [N, N]."""
+        """Pairwise RBF kernel wrapped on a Torus. x: [N, 2] -> [N, N]."""
         xf = x.astype(np.float64)
-        diff = xf[:, None, :] - xf[None, :, :]
+        diff = np.abs(xf[:, None, :] - xf[None, :, :])
+        diff = np.minimum(diff, (self.g_max + 1) - diff)
         dist_sq = np.sum(diff ** 2, axis=-1)
         return np.exp(-dist_sq / (2 * self.bandwidth ** 2))
 
@@ -98,7 +99,7 @@ class ParticleMoranForward:
                 for _ in range(min(n_hops[i], 50)):  # cap to prevent runaway
                     d = np.random.randint(4)
                     dx = np.array([[0, 1], [0, -1], [-1, 0], [1, 0]][d])
-                    x[i] = np.clip(x[i] + dx, 0, self.g_max)
+                    x[i] = (x[i] + dx) % (self.g_max + 1)
 
             # --- Resampling: Moran kernel-weighted copying ---
             if self.kappa > 0 and N > 1:
