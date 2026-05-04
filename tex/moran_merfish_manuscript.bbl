@@ -1,0 +1,185 @@
+\begin{thebibliography}{26}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Anderson(1982)]{anderson1982reverse}
+Brian D.~O. Anderson.
+\newblock Reverse-time diffusion equation models.
+\newblock \emph{Stochastic Processes and their Applications}, 12\penalty0
+  (3):\penalty0 313--326, 1982.
+
+\bibitem[Austin et~al.(2021)Austin, Johnson, Ho, Tarlow, and Van
+  Den~Berg]{austin2021structured}
+Jacob Austin, Daniel~D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne Van
+  Den~Berg.
+\newblock Structured denoising diffusion models in discrete state-spaces.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~34, pages 17981--17993, 2021.
+
+\bibitem[Bao et~al.(2023)Bao, Nie, Xue, Cao, Li, Su, and Zhu]{bao2023uvit}
+Fan Bao, Shen Nie, Kaiwen Xue, Yue Cao, Chongxuan Li, Hang Su, and Jun Zhu.
+\newblock All are worth words: A {V}i{T} backbone for diffusion models.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
+  and Pattern Recognition}, pages 22669--22679, 2023.
+
+\bibitem[Cable et~al.(2022)Cable, Murray, Zou, Goeva, Macosko, Chen, and
+  Irizarry]{cable2022rctd}
+Dylan~M. Cable, Evan Murray, Luli~S. Zou, Aleksandrina Goeva, Evan~Z. Macosko,
+  Fei Chen, and Rafael~A. Irizarry.
+\newblock Robust decomposition of cell type mixtures in spatial
+  transcriptomics.
+\newblock \emph{Nature Biotechnology}, 40:\penalty0 517--526, 2022.
+
+\bibitem[Campbell et~al.(2022)Campbell, Benton, De~Bortoli, Rainforth,
+  Deligiannidis, and Doucet]{campbell2022continuous}
+Andrew Campbell, Joe Benton, Valentin De~Bortoli, Tom Rainforth, George
+  Deligiannidis, and Arnaud Doucet.
+\newblock A continuous time framework for discrete denoising models.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~35, pages 28266--28279, 2022.
+
+\bibitem[De~Bortoli et~al.(2025)De~Bortoli, Galashov, Guntupalli, Zhou, Murphy,
+  Gretton, and Doucet]{debortoli2025distributional}
+Valentin De~Bortoli, Alexandre Galashov, J.~Swaroop Guntupalli, Guangyao Zhou,
+  Kevin~P. Murphy, Arthur Gretton, and Arnaud Doucet.
+\newblock Distributional diffusion models with scoring rules.
+\newblock \emph{arXiv preprint arXiv:2502.02483}, 2025.
+
+\bibitem[Dhariwal and Nichol(2021)]{dhariwal2021diffusion}
+Prafulla Dhariwal and Alexander Nichol.
+\newblock Diffusion models beat {GAN}s on image synthesis.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~34, pages 8780--8794, 2021.
+
+\bibitem[Ewens(2004)]{ewens2004mathematical}
+Warren~J. Ewens.
+\newblock \emph{Mathematical Population Genetics: I. Theoretical Introduction}.
+\newblock Springer, 2nd edition, 2004.
+
+\bibitem[Ferguson(1973)]{ferguson1973bayesian}
+Thomas~S. Ferguson.
+\newblock A {B}ayesian analysis of some nonparametric problems.
+\newblock \emph{The Annals of Statistics}, 1\penalty0 (2):\penalty0 209--230,
+  1973.
+
+\bibitem[Fishman et~al.(2025)Fishman, De~Bortoli, Rainforth, and
+  Doucet]{fishman2025count}
+Nic Fishman, Valentin De~Bortoli, Tom Rainforth, and Arnaud Doucet.
+\newblock Count bridges enable modeling and deconvolving transcriptomic data.
+\newblock \emph{arXiv preprint arXiv:2603.04730}, 2025.
+
+\bibitem[Gneiting and Raftery(2007)]{gneiting2007scoring}
+Tilmann Gneiting and Adrian~E. Raftery.
+\newblock Strictly proper scoring rules, prediction, and estimation.
+\newblock \emph{Journal of the American Statistical Association}, 102\penalty0
+  (477):\penalty0 359--378, 2007.
+
+\bibitem[Ho et~al.(2020)Ho, Jain, and Abbeel]{ho2020denoising}
+Jonathan Ho, Ajay Jain, and Pieter Abbeel.
+\newblock Denoising diffusion probabilistic models.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  33:\penalty0 6840--6851, 2020.
+
+\bibitem[Holderrieth et~al.(2024)Holderrieth, Havasi, Yim, Shaul, Gat,
+  Jaakkola, Karrer, Chen, and Lipman]{holderrieth2024generator}
+Peter Holderrieth, Marton Havasi, Jason Yim, Neta Shaul, Itai Gat, Tommi
+  Jaakkola, Brian Karrer, Ricky T.~Q. Chen, and Yaron Lipman.
+\newblock Generator matching: Generative modeling with arbitrary {M}arkov
+  processes.
+\newblock \emph{arXiv preprint arXiv:2410.20587}, 2024.
+
+\bibitem[Kingman(1982)]{kingman1982coalescent}
+J.~F.~C. Kingman.
+\newblock The coalescent.
+\newblock \emph{Stochastic Processes and their Applications}, 13\penalty0
+  (3):\penalty0 235--248, 1982.
+
+\bibitem[Kleshchevnikov et~al.(2022)Kleshchevnikov, Shmatko, Dann, Aivazidis,
+  King, Li, Elmentaite, Lomakin, Kedlian,
+  et~al.]{kleshchevnikov2022cell2location}
+Vitalii Kleshchevnikov, Artem Shmatko, Emma Dann, Alexander Aivazidis,
+  Hamish~W. King, Tong Li, Rasa Elmentaite, Artem Lomakin, Veronika Kedlian,
+  et~al.
+\newblock Cell2location maps fine-grained cell types in spatial
+  transcriptomics.
+\newblock \emph{Nature Biotechnology}, 40:\penalty0 661--671, 2022.
+
+\bibitem[Lipman et~al.(2022)Lipman, Chen, Ben-Hamu, Nickel, and
+  Le]{lipman2022flow}
+Yaron Lipman, Ricky T.~Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew
+  Le.
+\newblock Flow matching for generative modeling.
+\newblock \emph{arXiv preprint arXiv:2210.02747}, 2022.
+
+\bibitem[Lopez et~al.(2022)Lopez, Li, Keren-Shaul, Boyeau, Kedmi, Pilzer,
+  Jerber, et~al.]{lopez2022destvi}
+Romain Lopez, Baoguo Li, Hadas Keren-Shaul, Pierre Boyeau, Merav Kedmi, David
+  Pilzer, Jamie Jerber, et~al.
+\newblock Dest{VI} identifies continuums of cell types in spatial
+  transcriptomics data.
+\newblock \emph{Nature Biotechnology}, 40:\penalty0 1360--1369, 2022.
+
+\bibitem[Miller et~al.(2022)Miller, Huang, Atta, Sahoo, and
+  Fan]{miller2022stdeconvolve}
+Brendan~F. Miller, Feiyang Huang, Lyla Atta, Arpan Sahoo, and Jean Fan.
+\newblock {STdeconvolve}: reference-free cell type deconvolution of
+  multi-cellular pixel-resolution spatial transcriptomics data.
+\newblock \emph{Nature Communications}, 13\penalty0 (1):\penalty0 2339, 2022.
+
+\bibitem[Moran(1958)]{moran1958random}
+P.~A.~P. Moran.
+\newblock Random processes in genetics.
+\newblock \emph{Mathematical Proceedings of the Cambridge Philosophical
+  Society}, 54\penalty0 (1):\penalty0 60--71, 1958.
+
+\bibitem[Moses and Bhatt(2022)]{moses2022museum}
+Lambda Moses and Lior Bhatt.
+\newblock Museum of spatial transcriptomics.
+\newblock \emph{Nature Methods}, 19:\penalty0 534--546, 2022.
+
+\bibitem[Rozet et~al.(2024)Rozet, Andry, Lanusse, and Louppe]{rozet2024em}
+Fran{\c{c}}ois Rozet, Gaspard Andry, Fran{\c{c}}ois Lanusse, and Gilles Louppe.
+\newblock Learning diffusion priors from observations by expectation
+  maximization.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  37:\penalty0 87647--87682, 2024.
+
+\bibitem[Sethuraman(1994)]{sethuraman1994constructive}
+Jayaram Sethuraman.
+\newblock A constructive definition of {D}irichlet priors.
+\newblock \emph{Statistica Sinica}, 4:\penalty0 639--650, 1994.
+
+\bibitem[Song et~al.(2020)Song, Sohl-Dickstein, Kingma, Kumar, Ermon, and
+  Poole]{song2020score}
+Yang Song, Jascha Sohl-Dickstein, Diederik~P. Kingma, Abhishek Kumar, Stefano
+  Ermon, and Ben Poole.
+\newblock Score-based generative modeling through stochastic differential
+  equations.
+\newblock \emph{arXiv preprint arXiv:2011.13456}, 2020.
+
+\bibitem[St{\aa}hl et~al.(2016)St{\aa}hl, Salm{\'e}n, Vickovic, Lundmark,
+  Navarro, Magnusson, Giacomello, et~al.]{stahl2016visium}
+Patrik~L. St{\aa}hl, Fredrik Salm{\'e}n, Sanja Vickovic, Anna Lundmark,
+  Jos{\'e}~Fern{\'a}ndez Navarro, Jens Magnusson, Stefania Giacomello, et~al.
+\newblock Visualization and analysis of gene expression in tissue sections by
+  spatial transcriptomics.
+\newblock \emph{Science}, 353\penalty0 (6294):\penalty0 78--82, 2016.
+
+\bibitem[{Vizgen}(2021)]{vizgen2021merfish}
+{Vizgen}.
+\newblock {MERFISH} mouse brain receptor map.
+\newblock \url{https://vizgen.com/data-release-program/}, 2021.
+\newblock Data Release Program.
+
+\bibitem[Zaheer et~al.(2017)Zaheer, Kottur, Ravanbakhsh, Poczos, Salakhutdinov,
+  and Smola]{zaheer2017deep}
+Manzil Zaheer, Satwik Kottur, Siamak Ravanbakhsh, Barnabas Poczos, Ruslan~R.
+  Salakhutdinov, and Alexander~J. Smola.
+\newblock Deep sets.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~30, 2017.
+
+\end{thebibliography}
