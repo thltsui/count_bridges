@@ -4,3 +4,28 @@
 *.so
 data/*.gtf
 data/*.fa
+
+# Raw data
+data/merfish/
+
+# Outputs and checkpoints
+outputs/
+scratch/
+__pycache__/
+
+# Python environments
+.venv/
+venv/
+env/
+
+# LaTeX build artefacts (keep .tex source and tex/figures/ assets)
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+tex/*.pdf
+
+# OS
+.DS_Store
