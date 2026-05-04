@@ -10,7 +10,6 @@ import logging
 from pathlib import Path
 import numpy as np
 import pickle
-import cupy as cp
 from torch.utils.data import random_split
 from typing import Dict, Any, Optional, Callable
 import os

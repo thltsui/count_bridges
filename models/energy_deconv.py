@@ -76,7 +76,8 @@ class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
             del inputs['A']
         replicated_inputs = {}
         for key, value in inputs.items():
-            replicated_inputs[key] = value.unsqueeze(1).expand(-1, self.m, *[-1] * (value.dim() - 1)).reshape(n * self.m, *value.shape[1:])
+            device_value = value.to(target.device) if isinstance(value, torch.Tensor) else value
+            replicated_inputs[key] = device_value.unsqueeze(1).expand(-1, self.m, *[-1] * (device_value.dim() - 1)).reshape(n * self.m, *device_value.shape[1:])
 
         # Add noise (energy score specific requirement)  
         noise = torch.randn(n * self.m, self.noise_dim, device=target.device)
@@ -126,13 +127,13 @@ class DeconvolutionEnergyScoreLoss(EnergyScoreLoss):
         # ----- shapes -----
         base = next(iter(inputs.values()))
         agg = inputs['A']
-        device = base.device
+        device = next(self.parameters()).device
         BG = base.shape[0]
         B, D = target_sum.shape
         E = self.noise_dim
 
         # ----- 1) sample prior x_pred from architecture with noise -----
-        flat_inputs = {k: v for k, v in inputs.items()}
+        flat_inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
         noise = torch.randn(BG, E, device=device)
         flat_inputs['noise'] = noise
         if 'A' in flat_inputs:

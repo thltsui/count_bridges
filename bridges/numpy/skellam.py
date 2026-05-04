@@ -62,15 +62,15 @@ class SkellamBridge:
         t     = self.time_points[k].reshape(-1, 1)
         w_t   = self.weights[k]
         
-        N_t = np.random.binomial(N_1, np.expand_dims(w_t, -1)).astype(np.int32)
+        N_t = np.random.binomial(N_1.astype(int), np.expand_dims(w_t, -1)).astype(np.int32)
         
         # need to gaurd against zero nsample
         non_zero = N_t > 0
         B_t = np.zeros_like(B_1)
         B_t[non_zero] = np.random.hypergeometric(
-            ngood=B_1[non_zero],
-            nbad=N_1[non_zero] - B_1[non_zero],
-            nsample=N_t[non_zero]
+            ngood=B_1[non_zero].astype(int),
+            nbad=(N_1[non_zero] - B_1[non_zero]).astype(int),
+            nsample=N_t[non_zero].astype(int)
         ).astype(np.int32)
 
         x_t = x_1 - 2 * (B_1 - B_t) + (N_1 - N_t)
@@ -80,16 +80,7 @@ class SkellamBridge:
         # assert np.all((N_t - diff_t) % 2 == 0), "N_t - diff_t should be even"
 
         x_t, M_t, t, x_0 = dlpack_backend(x_t, M_t, t, x_0, backend=self.backend, dtype="float32", device=self.device)
-        out_dict = {
-            "inputs": {
-                "x_t": x_t,
-                "t": t,
-            },
-            "output": x_0 - x_t if self.delta else x_0
-        }
-        if not self.slack_sampler.markov:
-            out_dict["inputs"]["M_t"] = M_t
-        return out_dict
+        return t, x_t, x_0 - x_t if self.delta else x_0
     
     def sampler(
         self,
@@ -175,4 +166,4 @@ class SkellamBridge:
         if return_trajectory: outs.append(np.stack(traj))
         if return_x_hat:      outs.append(np.stack(xhat_traj))
         if return_M:          outs.append(np.stack(M_traj))
-        return dlpack_backend(*outs, backend=self.backend, dtype="float32") if len(outs) > 1 else dlpack_backend(x_t, backend=self.backend, dtype="float32") 
+        return dlpack_backend(*outs, backend=self.backend, dtype="float32") if len(outs) > 1 else dlpack_backend(x_t, backend=self.backend, dtype="float32")[0] 

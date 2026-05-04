@@ -13,12 +13,14 @@ class MoranReverseCTMC:
         kappa: float = 2.0,
         bandwidth: float = 5.0,
         n_substeps: int = 15,
+        guidance_weight: float = 2.0,
     ):
         self.g_max = g_max
         self.gamma_mut = gamma_mut
         self.kappa = kappa
         self.bandwidth = bandwidth
         self.n_substeps = n_substeps
+        self.guidance_weight = guidance_weight
         self.dx_opts = np.array([[0, 1], [0, -1], [1, 0], [-1, 0]], dtype=np.int32)
         
     def _time_scale(self, t: float) -> float:
@@ -55,19 +57,21 @@ class MoranReverseCTMC:
                 
             # 1. REVERSE MUTATION
             diff_curr = np.abs(x_out - x_0_hat_batch)
+            diff_curr = np.minimum(diff_curr, (self.g_max + 1) - diff_curr)
             p_curr = ive(diff_curr[..., 0], 2*mu) * ive(diff_curr[..., 1], 2*mu)
             p_curr = np.maximum(p_curr, 1e-30)
             
             # [B, N, 4, 2]
-            cx = x_out[:, :, None, :] + self.dx_opts[None, None, :, :]
-            valid = (cx[..., 0] >= 0) & (cx[..., 0] <= self.g_max) & \
-                    (cx[..., 1] >= 0) & (cx[..., 1] <= self.g_max)
+            cx = (x_out[:, :, None, :] + self.dx_opts[None, None, :, :]) % (self.g_max + 1)
+            valid = np.ones(cx.shape[:-1], dtype=bool)
                     
             c_hat = x_0_hat_batch[:, :, None, :]
             c_diff = np.abs(cx - c_hat)
+            c_diff = np.minimum(c_diff, (self.g_max + 1) - c_diff)
             p_cand = ive(c_diff[..., 0], 2*mu) * ive(c_diff[..., 1], 2*mu)
             
-            r_mut = self.gamma_mut * rate_mult * 0.25 * (p_cand / p_curr[:, :, None])
+            ratio = (p_cand / p_curr[:, :, None]) ** self.guidance_weight
+            r_mut = self.gamma_mut * rate_mult * 0.25 * ratio
             r_mut = np.where(valid, r_mut, 0.0)
             
             jumps = np.random.rand(B, N, 4) < (r_mut * dt_sub)
@@ -78,23 +82,52 @@ class MoranReverseCTMC:
             b_idx, n_idx = np.where(jumped)
             x_out[b_idx, n_idx] = cx[b_idx, n_idx, jump_dir[b_idx, n_idx]]
             
-            # 2. REVERSE RESAMPLING
+            # 2. ADJOINT REVERSE RESAMPLING (Coalescent Transport)
             if self.kappa > 0 and N > 1:
+                # p_curr traces proximity/importance of each state relative to theoretical origin
                 diff_curr = np.abs(x_out - x_0_hat_batch)
+                diff_curr = np.minimum(diff_curr, (self.g_max + 1) - diff_curr)
                 p_curr = ive(diff_curr[..., 0], 2*mu) * ive(diff_curr[..., 1], 2*mu)
-                p_target = ive(0, 2*mu) * ive(0, 2*mu)
+                p_curr = np.maximum(p_curr, 1e-30)
                 
-                spatial_dist_sq = np.sum((x_out - x_0_hat_batch)**2, axis=-1)
-                k_val = np.exp(-spatial_dist_sq / (2 * self.bandwidth ** 2))
+                # Spatial interaction kernel K(x_i, x_j)
+                diff_ij = np.abs(x_out[:, :, None, :] - x_out[:, None, :, :])
+                diff_ij = np.minimum(diff_ij, (self.g_max + 1) - diff_ij)
+                dist_sq_ij = np.sum(diff_ij**2, axis=-1)
+                k_val_ij = np.exp(-dist_sq_ij / (2 * self.bandwidth ** 2))
                 
-                base_r = self.kappa * rate_mult / N
-                r_jump = base_r * k_val * (p_target / np.maximum(p_curr, 1e-30))
-                r_jump = np.minimum(r_jump, 0.9 / dt_sub)
+                # Remove self-interactions
+                eye_mask = np.broadcast_to(np.eye(N, dtype=bool)[None, :, :], (B, N, N)).copy()
+                k_val_ij[eye_mask] = 0.0
                 
-                is_at_target = (diff_curr[..., 0] == 0) & (diff_curr[..., 1] == 0)
-                r_jump[is_at_target] = 0.0
+                # Adjoint Importance Ratio: particle i is evaluated against jumping to particle j's coordinates
+                ratio_ij = (p_curr[:, None, :] / p_curr[:, :, None]) ** self.guidance_weight
                 
-                jumped_resample = np.random.rand(B, N) < (r_jump * dt_sub)
-                x_out[jumped_resample] = x_0_hat_batch[jumped_resample]
+                kappa_eff = self.kappa * t_eval
+                base_r = kappa_eff * rate_mult / N
+                r_jump_matrix = base_r * k_val_ij * ratio_ij  # [B, N, N]
+                
+                total_r_jump = np.sum(r_jump_matrix, axis=-1)
+                total_r_jump = np.minimum(total_r_jump, 0.9 / dt_sub)
+                
+                jump_prob = total_r_jump * dt_sub
+                jumped = np.random.rand(B, N) < jump_prob
+                
+                # Normalize cross-rates properly for categorical choice
+                denom = np.maximum(np.sum(r_jump_matrix, axis=-1, keepdims=True), 1e-10)
+                prob_matrix = r_jump_matrix / denom
+                
+                cum_prob = np.cumsum(prob_matrix, axis=-1)
+                denom_cum = np.maximum(cum_prob[:, :, -1:], 1e-10)
+                cum_prob_norm = cum_prob / denom_cum
+                
+                rand_vals = np.random.rand(B, N, 1)
+                target_j = np.argmax(rand_vals < cum_prob_norm, axis=-1)
+                
+                # Execute Adjoint Coalescence simultaneously utilizing original batch copies limits
+                x_out_snapshot = x_out.copy()
+                b_idx, i_idx = np.where(jumped)
+                j_idx = target_j[b_idx, i_idx]
+                x_out[b_idx, i_idx] = x_out_snapshot[b_idx, j_idx]
                 
         return x_out
